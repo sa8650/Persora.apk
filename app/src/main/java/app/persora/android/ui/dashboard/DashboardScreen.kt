@@ -295,11 +295,11 @@ private fun SpacesCard(items: List<VaultItem>, contacts: Int, medical: Int, modi
 
 /** Card5 tool tile: 3-D icon + count top row, name + share bar bottom row. */
 @Composable
-fun ToolTile(name: String, icon: ImageVector, accent: Accent, count: Int, fraction: Float, modifier: Modifier = Modifier, unit: String = "items", onClick: () -> Unit) {
+fun ToolTile(name: String, icon: ImageVector, accent: Accent, count: Int, fraction: Float, modifier: Modifier = Modifier, unit: String = "items", iconSize: Dp = 34.dp, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Column(modifier.clip(shape).background(Bento.card).border(1.dp, Bento.ring, shape).clickable(onClick = onClick).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            IconTile(icon, accent, size = 34.dp, radius = 10.dp)
+            IconTile(icon, accent, size = iconSize, radius = iconSize * 0.3f)
             Spacer(Modifier.weight(1f))
             Column(horizontalAlignment = Alignment.End) {
                 Text(count.toString(), style = MonoBody.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = Bento.fg)
@@ -639,6 +639,9 @@ private fun GettingStartedCard(items: List<VaultItem>, contactsCount: Int, appLo
 
 /* ───────────────────────── Spaces (all sections) ───────────────────────── */
 
+/** Spaces grid icons: 34dp base → +20% (v2.1) → +20% again (v2.4). */
+private val SPACES_ICON = 41.dp
+
 @Composable
 fun SpacesScreen() {
     val vault = LocalContext.current.appContainer.vault
@@ -653,14 +656,14 @@ fun SpacesScreen() {
             item(span = { GridItemSpan(maxLineSpan) }) { MonoLabel(label, Modifier.padding(top = 10.dp, start = 2.dp, bottom = 2.dp)) }
             items(ids) { id ->
                 val s = Sections[id]; val n = items.count { it.section == id }
-                ToolTile(s.label, s.icon, Accents.byName(s.color), n, n / total.toFloat()) { nav.navigate(Routes.section(id)) }
+                ToolTile(s.label, s.icon, Accents.byName(s.color), n, n / total.toFloat(), iconSize = SPACES_ICON) { nav.navigate(Routes.section(id)) }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) { MonoLabel("People & health", Modifier.padding(top = 10.dp, start = 2.dp, bottom = 2.dp)) }
-        item { ToolTile("Contacts", Icons.Outlined.ContactPage, Accents.sky, contacts.size, contacts.size / total.toFloat(), unit = "people") { nav.navigate(Routes.CONTACTS) } }
-        item { ToolTile("Medical", Icons.Outlined.MonitorHeart, Accents.rose, medical.size, medical.size / total.toFloat(), unit = "records") { nav.navigate(Routes.MEDICAL) } }
-        item { ToolTile("Timeline", Icons.Outlined.EventNote, Accents.amber, 0, 0f, unit = "events") { nav.navigate(Routes.TIMELINE) } }
-        item { ToolTile("Cards", Icons.Outlined.CreditCard, Accents.violet, 0, 0f, unit = "cards") { nav.navigate(Routes.CARDS) } }
+        item { ToolTile("Contacts", Icons.Outlined.ContactPage, Accents.sky, contacts.size, contacts.size / total.toFloat(), unit = "people", iconSize = SPACES_ICON) { nav.navigate(Routes.CONTACTS) } }
+        item { ToolTile("Medical", Icons.Outlined.MonitorHeart, Accents.rose, medical.size, medical.size / total.toFloat(), unit = "records", iconSize = SPACES_ICON) { nav.navigate(Routes.MEDICAL) } }
+        item { ToolTile("Timeline", Icons.Outlined.EventNote, Accents.amber, 0, 0f, unit = "events", iconSize = SPACES_ICON) { nav.navigate(Routes.TIMELINE) } }
+        item { ToolTile("Cards", Icons.Outlined.CreditCard, Accents.violet, 0, 0f, unit = "cards", iconSize = SPACES_ICON) { nav.navigate(Routes.CARDS) } }
     }
 }
 
@@ -678,7 +681,7 @@ fun MoreScreen() {
                 Routes.secondary.forEachIndexed { i, entry ->
                     if (i > 0) HairLine(Modifier.padding(horizontal = 8.dp))
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { nav.navigate(entry.route) }.padding(horizontal = 10.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconTile(entry.icon, accents[i % accents.size], size = 30.dp, radius = 9.dp); Spacer(Modifier.width(12.dp))
+                        IconTile(entry.icon, accents[i % accents.size], size = 39.dp, radius = 11.dp); Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(entry.label, style = MaterialTheme.typography.titleSmall, color = Bento.fg)
                             if (entry.route == Routes.BILLING && storage != null) Text("${Files.formatSize(storage!!.bytesUsed)} of ${storage!!.storageLimitGb} GB · ${storage!!.planName}", style = MonoCaption.copy(letterSpacing = 0.3.sp), color = Bento.mutedFg, modifier = Modifier.padding(top = 2.dp))

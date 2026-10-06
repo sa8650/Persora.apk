@@ -105,7 +105,7 @@ fun WorkspaceShell(user: AppUser, offline: Boolean, deepLink: DeepLink?, onDeepL
     }
 
     // Load cache instantly, then reconcile with the API; poll every 30 s while in the foreground (same cadence as the web).
-    LaunchedEffect(user.id) { vault.loadFromCache(); vault.refreshAll(); val interest = container.session.primaryInterest(); if (interest != null && vault.items.value.isEmpty()) { /* first run: open the chosen space */ nav.navigate(if (interest == "contacts") Routes.CONTACTS else if (interest == "medical-records") Routes.MEDICAL else Routes.section(interest)) } }
+    LaunchedEffect(user.id) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { vault.loadFromCache() }; vault.refreshAll(); val interest = container.session.primaryInterest(); if (interest != null && vault.items.value.isEmpty()) { /* first run: open the chosen space */ nav.navigate(if (interest == "contacts") Routes.CONTACTS else if (interest == "medical-records") Routes.MEDICAL else Routes.section(interest)) } }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {

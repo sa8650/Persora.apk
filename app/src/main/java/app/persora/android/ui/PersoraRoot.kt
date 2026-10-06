@@ -24,7 +24,8 @@ fun PersoraRoot(deepLink: DeepLink?, onDeepLinkConsumed: () -> Unit) {
     var showProtect by remember { mutableStateOf(false) }
     var appLock by remember { mutableStateOf(session.appLockEnabled) }
 
-    LaunchedEffect(Unit) { if (state is SessionState.Booting) session.restore() }
+    // Off the main thread: encrypted-prefs init + the /auth/me round-trip must never stall the boot animation.
+    LaunchedEffect(Unit) { if (state is SessionState.Booting) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { session.restore() } }
 
     Crossfade(targetState = state, label = "root") { s ->
         when (s) {

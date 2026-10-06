@@ -80,7 +80,7 @@ fun SectionScreen(sectionId: String) {
         if (query.isNotBlank()) { val q = query.lowercase(); list = list.filter { it.title.lowercase().contains(q) || it.metadata.values.any { v -> v.lowercase().contains(q) } } }
         when (sort) {
             1 -> list.sortedBy { it.title.lowercase() }
-            2 -> list.sortedBy { it.metadata[section.dateKey ?: "dueDate"] ?: "9999" }
+            2 -> list.sortedBy { it.metadata[section.dateKey ?: when { it.isReminder -> "reminderAt"; it.isAlarm -> "alarmTime"; else -> "dueDate" }]?.takeIf { v -> v.isNotBlank() } ?: "9999" }
             else -> list.sortedWith(compareByDescending<VaultItem> { it.pinned }.thenByDescending { it.updatedAt })
         }
     }
@@ -92,7 +92,32 @@ fun SectionScreen(sectionId: String) {
         }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") })
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { SearchField(query, { query = it }, "Search ${section.label.lowercase()}…") }
+            item {
+                // Search + a single filter button (favourites / sort live in its menu) so the page header stays clean.
+                var filterOpen by remember { mutableStateOf(false) }
+                val filterActive = favoritesOnly || sort != 0
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SearchField(query, { query = it }, "Search ${section.label.lowercase()}…", modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(6.dp))
+                    Box {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (filterActive) Bento.primarySoft else Bento.card).border(1.dp, if (filterActive) Bento.primary else Bento.borderStrong.copy(alpha = 0.8f), RoundedCornerShape(12.dp)).clickable { filterOpen = true }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.FilterList, "Filter & sort", tint = if (filterActive) Bento.primary else Bento.fg, modifier = Modifier.size(20.dp))
+                            if (filterActive) Box(Modifier.align(Alignment.TopEnd).padding(7.dp).size(6.dp).clip(CircleShape).background(Bento.primary))
+                        }
+                        DropdownMenu(expanded = filterOpen, onDismissRequest = { filterOpen = false }, containerColor = Bento.card) {
+                            Text("SHOW", style = MonoCaption, color = Bento.subtleFg, modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp))
+                            DropdownMenuItem(text = { Text("Favorites only") }, leadingIcon = { Icon(if (favoritesOnly) Icons.Outlined.Star else Icons.Outlined.StarBorder, null, tint = if (favoritesOnly) Accents.amber.c500 else Bento.mutedFg) }, trailingIcon = { if (favoritesOnly) Icon(Icons.Outlined.Check, null, tint = Bento.primary) }, onClick = { favoritesOnly = !favoritesOnly })
+                            HorizontalDivider(color = Bento.border)
+                            Text("SORT BY", style = MonoCaption, color = Bento.subtleFg, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp))
+                            listOf(Triple(0, "Recent", Icons.Outlined.History), Triple(1, "A–Z", Icons.Outlined.SortByAlpha), Triple(2, "By date", Icons.Outlined.Event)).forEach { (i, label, icon) ->
+                                if (i == 2 && section.dateKey == null && sectionId != "notes") return@forEach
+                                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null, tint = if (sort == i) Bento.primary else Bento.mutedFg) }, trailingIcon = { if (sort == i) Icon(Icons.Outlined.Check, null, tint = Bento.primary) }, onClick = { sort = i; filterOpen = false })
+                            }
+                            if (filterActive) { HorizontalDivider(color = Bento.border); DropdownMenuItem(text = { Text("Reset", color = Bento.mutedFg) }, onClick = { favoritesOnly = false; sort = 0; filterOpen = false }) }
+                        }
+                    }
+                }
+            }
             if (sectionId == "accounts" || sectionId == "wallet-cards") item {
                 Row(Modifier.clip(RoundedCornerShape(10.dp)).background(Accents.amber.soft).border(1.dp, Accents.amber.line, RoundedCornerShape(10.dp)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Shield, null, tint = Accents.amber.text, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp))
@@ -101,12 +126,6 @@ fun SectionScreen(sectionId: String) {
             }
             if (sectionId == "notes") item { SegmentedTabs(listOf("Notes", "Tasks", "Reminders", "Alarms"), notesTab, { notesTab = it }) }
             if (sectionId == "personal-finance") item { FinanceSummary(sectionItems) }
-            item {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text("Favorites") }, leadingIcon = { Icon(if (favoritesOnly) Icons.Outlined.Star else Icons.Outlined.StarBorder, null, Modifier.size(16.dp)) }, shape = CircleShape, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Bento.muted, selectedLabelColor = Bento.primary, selectedLeadingIconColor = Bento.primary))
-                    listOf("Recent", "A–Z", if (section.dateKey != null) "By date" else null).forEachIndexed { i, label -> if (label != null) FilterChip(selected = sort == i, onClick = { sort = i }, label = { Text(label) }, shape = CircleShape, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Bento.muted, selectedLabelColor = Bento.primary)) }
-                }
-            }
             item {
                 FolderShelf(folders, folderId, onSelect = { folderId = it }, onCreate = { creatingFolder = true }, onLongPress = { folderDialog = it }, counts = sectionItems.groupingBy { it.folderId }.eachCount())
             }

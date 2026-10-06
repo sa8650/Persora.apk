@@ -51,7 +51,7 @@ object ContactImport {
     /** Returns a normalised phone or null when the number is unusable (letters, too short/long…). */
     fun normalizeImportedPhone(value: String, label: String = "Mobile"): ContactPhone? {
         val raw = value.trim().removePrefix("tel:").removePrefix("TEL:")
-        if (raw.isBlank() || !Regex("^\\+?[\\d\\s().-]+$").matches(raw)) return null
+        if (raw.isBlank() || !PHONE_SHAPE.matches(raw)) return null
         val count = cleanDigits(raw).length
         if (count < 7 || count > 15) return null
         val number = normalizePhone(raw)
@@ -62,7 +62,10 @@ object ContactImport {
 
     /* ------------------------------------------------ duplicates ------------------------------------------------ */
 
-    private fun normalizedName(v: String) = Normalizer.normalize(v, Normalizer.Form.NFKD).replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    private val MARKS = Regex("\\p{M}+")
+    private val NON_ALNUM = Regex("[^\\p{L}\\p{N}]+")
+    private val PHONE_SHAPE = Regex("^\\+?[\\d\\s().-]+$")
+    private fun normalizedName(v: String) = Normalizer.normalize(v, Normalizer.Form.NFKD).replace(MARKS, "").lowercase().replace(NON_ALNUM, " ").trim()
     private fun normalizedEmail(v: String) = v.trim().lowercase()
 
     fun duplicateKeys(c: PersoraContact): Set<String> {
@@ -96,7 +99,12 @@ object ContactImport {
      * flags whole-contact duplicates. Mirrors handleImportFile()/confirmImport() on the web.
      */
     fun prepare(drafts: List<Draft>, existing: List<PersoraContact>): List<Entry> {
-        val seenNumbers = existing.flatMap { c -> c.phoneNumbers.mapNotNull { normalizeImportedPhone(it.number)?.number } }.toMutableSet()
+        val seenNumbers = HashSet<String>()
+        existing.forEach { c -> c.phoneNumbers.forEach { p -> normalizeImportedPhone(p.number)?.let { seenNumbers += it.number } } }
+        // One pass over the existing contacts builds a key → contact index, so each draft is an O(keys) lookup
+        // instead of re-deriving every existing contact's keys per draft (that quadratic loop froze the UI on big address books).
+        val index = HashMap<String, PersoraContact>()
+        existing.forEach { c -> duplicateKeys(c).forEach { k -> index.putIfAbsent(k, c) } }
         val out = ArrayList<Entry>(drafts.size)
         for (d in drafts) {
             val invalid = ArrayList<String>(); val dupNumbers = ArrayList<String>(); val phones = ArrayList<ContactPhone>()
@@ -109,9 +117,10 @@ object ContactImport {
                 phones += n
             }
             val cleaned = d.contact.copy(name = d.contact.name.trim().ifBlank { "Unnamed contact" }, phoneNumbers = phones.take(20), email = d.contact.email.trim())
-            val dupe = findDuplicate(cleaned, existing) ?: out.firstOrNull { e -> e.selected && duplicateKeys(e.draft.contact).any { it in duplicateKeys(cleaned) } }?.draft?.contact
+            val keys = duplicateKeys(cleaned)
+            val dupe = keys.firstNotNullOfOrNull { index[it] }
             val selected = dupe == null && (phones.isNotEmpty() || cleaned.email.isNotBlank())
-            if (selected) phones.forEach { seenNumbers += it.number } // later rows in the same batch see this one as saved
+            if (selected) { phones.forEach { seenNumbers += it.number }; keys.forEach { index.putIfAbsent(it, cleaned) } } // later rows in the batch see this one as saved
             out += Entry(Draft(cleaned, d.photo, d.photoMime), dupe?.name.orEmpty(), invalid, dupNumbers, selected)
         }
         return out

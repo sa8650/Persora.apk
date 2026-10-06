@@ -67,7 +67,9 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
     var step by remember { mutableStateOf<Step>(Step.Pick) }
     val busy = step is Step.Reading || step is Step.Importing
 
-    suspend fun runImport(entries: List<Entry>): ContactImport.Summary {
+    // Runs entirely on IO: uploads go straight through the API and the local contact list / cache is refreshed once at
+    // the end (saving through the repository per contact re-serialised the whole list on every row and stalled the UI).
+    suspend fun runImport(entries: List<Entry>): ContactImport.Summary = withContext(Dispatchers.IO) {
         val chosen = entries.filter { it.selected }
         val failed = ArrayList<Pair<String, String>>()
         var imported = 0
@@ -76,15 +78,16 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
             try {
                 var photoKey: String? = null
                 e.draft.photo?.let { bytes ->
-                    runCatching { withContext(Dispatchers.IO) { api.uploadVaultFile("${e.name.take(40).replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifBlank { "contact" }}-photo.jpg", e.draft.photoMime, bytes.size.toLong(), { bytes.inputStream() }) } }.onSuccess { photoKey = it.key }
+                    runCatching { api.uploadVaultFile("${e.name.take(40).replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifBlank { "contact" }}-photo.jpg", e.draft.photoMime, bytes.size.toLong(), { bytes.inputStream() }) }.onSuccess { photoKey = it.key }
                 }
-                vault.saveContact(e.draft.contact.copy(photoKey = photoKey), isNew = true)
+                api.saveContact(e.draft.contact.copy(photoKey = photoKey), isNew = true)
                 imported++
             } catch (ex: kotlinx.coroutines.CancellationException) { throw ex } catch (ex: Exception) {
                 failed += e.name to humanizeError(ex.message ?: "Couldn't save.", "error").first
             }
         }
-        return ContactImport.Summary(
+        if (imported > 0) runCatching { vault.refreshContacts() }
+        ContactImport.Summary(
             imported = imported,
             skippedDuplicates = entries.count { !it.selected && it.duplicateOf.isNotBlank() },
             skippedInvalidNumbers = entries.sumOf { it.invalidPhones.size },
@@ -102,9 +105,10 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
                     val t = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { bytes -> if (bytes.size > 15 * 1024 * 1024) error("Files must be smaller than 15 MB."); String(bytes, Charsets.UTF_8) } ?: error("Couldn't read that file.")
                     n to t
                 }
-                val drafts = ContactImport.parseAny(text, name)
+                val drafts = withContext(Dispatchers.Default) { ContactImport.parseAny(text, name) }
                 if (drafts.isEmpty()) error(if (name?.lowercase()?.endsWith(".csv") == true) "No contacts were found in that CSV. Make sure it has a header row with name, phone or e-mail columns." else "No readable contacts were found in that file. Export as vCard (.vcf) or CSV and try again.")
-                step = Step.Preview(ContactImport.prepare(drafts, contacts), name ?: "file")
+                val prepared = withContext(Dispatchers.Default) { ContactImport.prepare(drafts, contacts) }
+                step = Step.Preview(prepared, name ?: "file")
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { step = Step.Failed(e.message ?: "Couldn't read that file.") }
         }
     }
@@ -115,7 +119,7 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
             try {
                 val drafts = withContext(Dispatchers.IO) { ContactImport.readPhoneContacts(context) }
                 if (drafts.isEmpty()) { step = Step.Failed("No contacts with a phone number or e-mail were found on this phone."); return@launch }
-                val entries = ContactImport.prepare(drafts, contacts)
+                val entries = withContext(Dispatchers.Default) { ContactImport.prepare(drafts, contacts) }
                 val toImport = entries.filter { it.selected }
                 if (toImport.isEmpty()) { step = Step.Done(ContactImport.Summary(0, entries.count { it.duplicateOf.isNotBlank() }, entries.sumOf { it.invalidPhones.size }, entries.sumOf { it.duplicatePhones.size }, emptyList())); return@launch }
                 val summary = runImport(entries)

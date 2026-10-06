@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -113,7 +113,7 @@ fun PersoraBootScreen(statusText: String = "Preparing your personal vault…") {
 @Composable
 private fun OrbitRing(radius: Dp, durationMs: Int, iconSize: Dp, items: List<OrbitItem>, reverse: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "orbit-$radius")
-    val progress by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(durationMs, easing = LinearEasing), RepeatMode.Restart), label = "angle")
+    val progress = transition.animateFloat(0f, 1f, infiniteRepeatable(tween(durationMs, easing = LinearEasing), RepeatMode.Restart), label = "angle")
     val density = LocalDensity.current
     val radiusPx = with(density) { radius.toPx() }
     // Orbit path (stroke: --p-blue at 15 % opacity, 1 px)
@@ -121,12 +121,14 @@ private fun OrbitRing(radius: Dp, durationMs: Int, iconSize: Dp, items: List<Orb
     val count = items.size
     items.forEachIndexed { index, item ->
         val baseAngle = (360f / count) * index
-        val sweep = if (reverse) -360f * progress else 360f * progress
-        // CSS: rotate(angle) translateY(radius) → start at the bottom of the circle, rotate clockwise.
-        val rad = Math.toRadians((baseAngle + sweep + 90f).toDouble())
-        val dx = with(density) { (radiusPx * cos(rad)).toFloat().toDp() }
-        val dy = with(density) { (radiusPx * sin(rad)).toFloat().toDp() }
-        OrbitIcon(item, iconSize, Modifier.offset(x = dx, y = dy))
+        // The animated value is read inside graphicsLayer's lambda, so each frame only updates the layer's
+        // translation — no recomposition, no relayout, no redraw of the 15 tiles (that is what made it stutter).
+        OrbitIcon(item, iconSize, Modifier.graphicsLayer {
+            val sweep = if (reverse) -360f * progress.value else 360f * progress.value
+            val rad = Math.toRadians((baseAngle + sweep + 90f).toDouble())
+            translationX = (radiusPx * cos(rad)).toFloat()
+            translationY = (radiusPx * sin(rad)).toFloat()
+        })
     }
 }
 
@@ -138,14 +140,16 @@ private fun OrbitIcon(item: OrbitItem, size: Dp, modifier: Modifier) {
 @Composable
 private fun BootCore() {
     val transition = rememberInfiniteTransition(label = "core")
-    val breathe by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breathe")
-    val ring by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "ring")
+    val breathe = transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breathe")
+    val ring = transition.animateFloat(0f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "ring")
+    val density = LocalDensity.current
     Box(contentAlignment = Alignment.Center) {
-        // ::before expanding ring
-        Box(Modifier.size((72 + 18).dp * (0.92f + 0.30f * ring)).border(1.dp, Bento.primary.copy(alpha = 0.18f * (1f - ring)), RoundedCornerShape(30.dp)))
+        // ::before expanding ring — fixed size, scaled/faded in the layer (cheap) instead of resizing every frame.
+        Box(Modifier.size((72 + 18).dp).graphicsLayer { val s = 0.92f + 0.30f * ring.value; scaleX = s; scaleY = s; alpha = 1f - ring.value }.border(1.dp, Bento.primary.copy(alpha = 0.18f), RoundedCornerShape(30.dp)))
         Box(
-            Modifier.offset(y = (-2).dp * breathe).size(72.dp).shadow((10 + 4 * breathe).dp, RoundedCornerShape(24.dp), ambientColor = Bento.primary.copy(alpha = 0.24f), spotColor = Bento.primary.copy(alpha = 0.29f))
-                .clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(Bento.primary, Bento.primary))).border(1.dp, Bento.bg.copy(alpha = 0.6f), RoundedCornerShape(24.dp)),
+            Modifier.graphicsLayer { translationY = with(density) { (-2).dp.toPx() } * breathe.value }
+                .size(72.dp).shadow(12.dp, RoundedCornerShape(24.dp), ambientColor = Bento.primary.copy(alpha = 0.24f), spotColor = Bento.primary.copy(alpha = 0.29f))
+                .clip(RoundedCornerShape(24.dp)).background(Bento.primary).border(1.dp, Bento.bg.copy(alpha = 0.6f), RoundedCornerShape(24.dp)),
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Outlined.VerifiedUser, contentDescription = "Persora", tint = Bento.primaryFg, modifier = Modifier.size(35.dp)) }
     }
