@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Persora</string>
+    <string name="boot_eyebrow">YOUR PRIVATE SPACE</string>
+    <string name="boot_preparing">Preparing your personal vault…</string>
+    <string name="notification_channel_reminders">Reminders</string>
+    <string name="notification_channel_alarms">Alarms</string>
+    <string name="notification_channel_sharing">Sharing activity</string>
+</resources>

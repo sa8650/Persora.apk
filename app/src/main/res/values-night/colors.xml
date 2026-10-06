@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Bento tokens (dark): neutral-950 page, neutral-50 ink -->
+    <color name="persora_bg">#0A0A0A</color>
+    <color name="persora_ink">#FAFAFA</color>
+    <color name="persora_primary">#8AB4F8</color>
+    <color name="persora_white">#0B2A5C</color>
+</resources>

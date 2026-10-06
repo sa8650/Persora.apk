@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="@color/persora_primary" android:pathData="M30,30 m0,12 a12,12 0 0 1 12,-12 h24 a12,12 0 0 1 12,12 v24 a12,12 0 0 1 -12,12 h-24 a12,12 0 0 1 -12,-12 z"/>
+    <group android:scaleX="1.5" android:scaleY="1.5" android:translateX="36" android:translateY="36">
+        <path android:strokeColor="@color/persora_white" android:strokeWidth="2.1" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000"
+            android:pathData="M20,13c0,5 -3.5,7.5 -7.66,8.95a1,1 0,0 1,-0.67 -0.01C7.5,20.5 4,18 4,13V6a1,1 0,0 1,1 -1c2,0 4.5,-1.2 6.24,-2.72a1.17,1.17 0,0 1,1.52 0C14.51,3.81 17,5 19,5a1,1 0,0 1,1 1z"/>
+        <path android:strokeColor="@color/persora_white" android:strokeWidth="2.1" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" android:pathData="M9,12l2,2 4,-4"/>
+    </group>
+</vector>
