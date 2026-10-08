@@ -26,6 +26,7 @@ import app.persora.android.appContainer
 import app.persora.android.data.model.Sections
 import app.persora.android.ui.components.*
 import app.persora.android.ui.navigation.Details
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.ui.navigation.LocalNav
 import app.persora.android.ui.navigation.Routes
 import app.persora.android.ui.theme.Bento
@@ -77,7 +78,7 @@ fun SearchScreen() {
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
                 item { Text("${hits.size} RESULT${if (hits.size == 1) "" else "S"}", style = MaterialTheme.typography.labelSmall, color = Bento.subtleFg, modifier = Modifier.padding(vertical = 4.dp)) }
                 items(hits, key = { it.kind + it.id }) { h ->
-                    BentoCard(padding = 10.dp, onClick = { if (!Details.openRoute(h.route)) nav.navigate(h.route) }) {
+                    BentoCard(padding = 10.dp, onClick = { if (h.kind == "card") EditorDrawer.openBusinessCard(h.id) else if (!Details.openRoute(h.route)) nav.navigate(h.route) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             ToneIconBox(h.icon, h.tone, size = 34.dp, radius = 10.dp); Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) { Text(h.title, style = MaterialTheme.typography.titleSmall, color = Bento.fg, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(h.subtitle, style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg, maxLines = 1, overflow = TextOverflow.Ellipsis) }

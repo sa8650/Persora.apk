@@ -29,13 +29,11 @@ class MainActivity : FragmentActivity() {
 }
 
 /** Notification taps (open=notes&itemId=…) and https://persora.pages.dev/card/<id> links. */
-data class DeepLink(val view: String? = null, val itemId: String? = null, val publicCardId: String? = null, val dialNumber: String? = null) {
+data class DeepLink(val view: String? = null, val itemId: String? = null, val publicCardId: String? = null) {
     companion object {
         fun from(intent: Intent?): DeepLink? {
             intent ?: return null
             val data = intent.data
-            // Phone-app role: ACTION_DIAL / tel: links open Persora's dialpad.
-            if (intent.action == Intent.ACTION_DIAL || (intent.action == Intent.ACTION_VIEW && data?.scheme == "tel")) return DeepLink(view = "calls", dialNumber = data?.takeIf { it.scheme == "tel" }?.schemeSpecificPart)
             if (data != null && data.pathSegments.firstOrNull() == "card" && data.pathSegments.size >= 2) return DeepLink(publicCardId = data.pathSegments[1])
             val open = intent.getStringExtra("open") ?: return null
             return DeepLink(view = open, itemId = intent.getStringExtra("itemId"))

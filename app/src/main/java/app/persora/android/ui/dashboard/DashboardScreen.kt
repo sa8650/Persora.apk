@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,9 +49,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import app.persora.android.appContainer
 import app.persora.android.core.storage.SecurePrefs
 import app.persora.android.core.util.Dates
+import app.persora.android.ui.contacts.ContactImportWork
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.core.util.Files
 import app.persora.android.data.model.AppUser
 import app.persora.android.data.model.Sections
@@ -131,10 +137,12 @@ fun DashboardScreen(user: AppUser) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(greeting.headline, style = MaterialTheme.typography.headlineSmall, color = Bento.fg)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(greeting.headline, style = MaterialTheme.typography.headlineSmall, color = Bento.fg)
+                        if (user.emailVerified) VerifiedBadge(activePlan = user.uploadsEnabled, size = 16.dp)
+                    }
                     Text(greeting.line, style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
                 }
-                PrimaryButton("Add", onClick = { nav.navigate(Routes.editor("documents")) }, icon = Icons.Outlined.Add)
             }
         }
 
@@ -625,7 +633,7 @@ private fun GettingStartedCard(items: List<VaultItem>, contactsCount: Int, appLo
         Panel(Modifier.fillMaxWidth(), padding = 6.dp) {
             Column {
                 tasks.forEach { t ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(enabled = !t.done) { nav.navigate(t.route) }.padding(vertical = 7.dp, horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(enabled = !t.done) { when (t.route) { Routes.editor("documents") -> EditorDrawer.openAddDocument(); Routes.contactEditor() -> EditorDrawer.openContact(); else -> nav.navigate(t.route) } }.padding(vertical = 7.dp, horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconTile(t.icon, if (t.done) Accents.zinc else t.accent, size = 24.dp, radius = 7.dp)
                         Spacer(Modifier.width(10.dp))
                         Text(t.label, style = MonoBody.copy(fontSize = 10.5.sp), color = if (t.done) Bento.subtleFg else Bento.fg, modifier = Modifier.weight(1f))
@@ -699,13 +707,21 @@ fun MoreScreen() {
 
 @Composable
 fun NotificationsScreen() {
-    val vault = LocalContext.current.appContainer.vault
+    val context = LocalContext.current
+    val vault = context.appContainer.vault
     val nav = LocalNav.current
     val notifications by vault.notifications.collectAsStateWithLifecycle()
     val items by vault.items.collectAsStateWithLifecycle()
+    val importWorkInfos by WorkManager.getInstance(context).getWorkInfosByTagLiveData(ContactImportWork.TAG).observeAsState(emptyList())
+    val recentImports = remember(importWorkInfos) { importWorkInfos.takeLast(8).reversed() }
     LaunchedEffect(Unit) { vault.markNotificationsRead() }
-    if (notifications.isEmpty()) { EmptyState("You're all caught up.", "Reminders, alarms and sharing activity will show up here.", Icons.Outlined.NotificationsNone); return }
+    if (notifications.isEmpty() && recentImports.isEmpty()) { EmptyState("You're all caught up.", "Reminders, alarms, sharing activity and background contact imports will show up here.", Icons.Outlined.NotificationsNone); return }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp, 10.dp, 14.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (recentImports.isNotEmpty()) {
+            item { Text("CONTACT IMPORTS", style = MonoCaption, color = Bento.subtleFg, modifier = Modifier.padding(start = 4.dp, top = 4.dp)) }
+            items(recentImports, key = { "contact-import-${it.id}" }) { info -> ContactImportNotificationCard(info, onOpenContacts = { nav.navigate(Routes.CONTACTS) }) }
+        }
+        if (notifications.isNotEmpty()) item { Text("PERSORA ACTIVITY", style = MonoCaption, color = Bento.subtleFg, modifier = Modifier.padding(start = 4.dp, top = 8.dp)) }
         items(notifications.size) { i ->
             val n = notifications[i]
             val (icon, accent) = when (n.kind) { "reminder" -> Icons.Outlined.NotificationsActive to Accents.amber; "alarm" -> Icons.Outlined.Alarm to Accents.violet; else -> Icons.Outlined.Share to Accents.sky }
@@ -723,5 +739,48 @@ fun NotificationsScreen() {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ContactImportNotificationCard(info: WorkInfo, onOpenContacts: () -> Unit) {
+    val running = info.state == WorkInfo.State.RUNNING
+    val waiting = info.state == WorkInfo.State.ENQUEUED || info.state == WorkInfo.State.BLOCKED
+    val done = info.progress.getInt(ContactImportWork.KEY_DONE, 0)
+    val total = info.progress.getInt(ContactImportWork.KEY_TOTAL, 0)
+    val percent = info.progress.getInt(ContactImportWork.KEY_PROGRESS, 0).coerceIn(0, 100)
+    val imported = info.outputData.getInt(ContactImportWork.OUTPUT_IMPORTED, 0)
+    val failed = info.outputData.getInt(ContactImportWork.OUTPUT_FAILED, 0)
+    val skipped = info.outputData.getInt(ContactImportWork.OUTPUT_SKIPPED_DUPLICATES, 0) + info.outputData.getInt(ContactImportWork.OUTPUT_SKIPPED_INVALID, 0) + info.outputData.getInt(ContactImportWork.OUTPUT_SKIPPED_REPEATED, 0)
+    val title = when {
+        running -> "Importing phone contacts"
+        waiting -> "Contact import queued"
+        info.state == WorkInfo.State.SUCCEEDED -> "Phone contact import complete"
+        info.state == WorkInfo.State.CANCELLED -> "Phone contact import cancelled"
+        else -> "Phone contact import needs attention"
+    }
+    val detail = when {
+        running -> "$done of $total contacts processed"
+        waiting -> "Waiting for a network connection; the import will resume automatically."
+        info.state == WorkInfo.State.SUCCEEDED -> "$imported added${if (failed > 0) " · $failed couldn't be saved" else ""}${if (skipped > 0) " · $skipped skipped" else ""}"
+        info.state == WorkInfo.State.CANCELLED -> "This background import was cancelled."
+        else -> info.outputData.getString(ContactImportWork.KEY_FAILURE) ?: "$failed contacts couldn't be saved. You can retry from Contacts."
+    }
+    BentoCard(padding = 13.dp, radius = 16.dp, onClick = onOpenContacts) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ToneIconBox(Icons.Outlined.ContactPhone, if (info.state == WorkInfo.State.FAILED) Tones.Red else Tones.Blue, size = 36.dp, radius = 11.dp)
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = Bento.fg)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
+            }
+            if (running || waiting) Pill(if (running) "$percent%" else "Queued", Tones.Blue)
+            else Icon(Icons.Outlined.ChevronRight, null, tint = Bento.subtleFg, modifier = Modifier.size(18.dp))
+        }
+        if (running) {
+            Spacer(Modifier.height(9.dp))
+            ProgressTrack(percent / 100f, Accents.brand, modifier = Modifier.fillMaxWidth(), height = 5.dp, shimmer = true)
+        }
+        if (info.state == WorkInfo.State.SUCCEEDED) TextButton(onClick = onOpenContacts, contentPadding = PaddingValues(start = 0.dp, top = 4.dp, end = 8.dp, bottom = 0.dp)) { Text("Open contacts", color = Bento.primary) }
     }
 }

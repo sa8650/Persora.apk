@@ -35,6 +35,7 @@ import app.persora.android.data.model.VaultFolder
 import app.persora.android.data.model.VaultItem
 import app.persora.android.ui.components.*
 import app.persora.android.ui.navigation.Details
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.ui.navigation.LocalNav
 import app.persora.android.ui.navigation.LocalNotify
 import app.persora.android.ui.navigation.Routes
@@ -88,7 +89,7 @@ fun SectionScreen(sectionId: String) {
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, floatingActionButton = {
         ExtendedFloatingActionButton(onClick = {
             val kind = if (sectionId == "notes") listOf("note", "todo", "reminder", "alarm")[notesTab] else null
-            nav.navigate(Routes.editor(sectionId, folder = folderId, kind = kind))
+            EditorDrawer.openItem(sectionId, folderId = folderId, kind = kind)
         }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") })
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -202,7 +203,7 @@ fun ItemCard(item: VaultItem, onClick: () -> Unit) {
                     if (item.pinned) Icon(Icons.Outlined.PushPin, "Pinned", tint = Bento.primary, modifier = Modifier.padding(start = 6.dp).size(13.dp))
                     if (item.favorite) Icon(Icons.Outlined.Star, "Favorite", tint = Accents.amber.c500, modifier = Modifier.padding(start = 4.dp).size(14.dp))
                 }
-                val subtitle = preview.firstOrNull()?.second ?: item.subtitle.orEmpty()
+                val subtitle = preview.firstOrNull()?.second.orEmpty()
                 if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (preview.size > 1 || item.file != null || expiry != null) {
                     Spacer(Modifier.height(8.dp))

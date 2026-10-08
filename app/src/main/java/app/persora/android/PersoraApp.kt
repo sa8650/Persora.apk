@@ -10,6 +10,7 @@ import app.persora.android.core.storage.SecurePrefs
 import app.persora.android.data.api.PersoraApi
 import app.persora.android.data.repository.SessionManager
 import app.persora.android.data.repository.VaultRepository
+import app.persora.android.ui.contacts.ContactImportNotifications
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 
@@ -33,7 +34,7 @@ class PersoraApp : Application(), ImageLoaderFactory {
         super.onCreate()
         container = AppContainer(this)
         AlarmScheduler.ensureChannels(this)
-        app.persora.android.calls.PersoraInCallService.ensureChannel(this)
+        ContactImportNotifications.ensureChannels(this)
     }
 
     /** Coil shares the API's OkHttp client so private photos (/contacts/photo, /file) load with the session cookie. */

@@ -3,6 +3,7 @@ package app.persora.android.ui.contacts
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -64,6 +65,8 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
     val notify = app.persora.android.ui.navigation.LocalNotify.current
     val scope = rememberCoroutineScope()
     val contacts by vault.contacts.collectAsStateWithLifecycle()
+    val currentUser = observeCurrentUser()
+    val canUpload = currentUser?.uploadsEnabled == true
     var step by remember { mutableStateOf<Step>(Step.Pick) }
     val busy = step is Step.Reading || step is Step.Importing
 
@@ -77,7 +80,7 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
             step = Step.Importing(chosen.size, index, e.name)
             try {
                 var photoKey: String? = null
-                e.draft.photo?.let { bytes ->
+                if (canUpload) e.draft.photo?.let { bytes ->
                     runCatching { api.uploadVaultFile("${e.name.take(40).replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifBlank { "contact" }}-photo.jpg", e.draft.photoMime, bytes.size.toLong(), { bytes.inputStream() }) }.onSuccess { photoKey = it.key }
                 }
                 api.saveContact(e.draft.contact.copy(photoKey = photoKey), isNew = true)
@@ -94,6 +97,38 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
             skippedDuplicateNumbers = entries.sumOf { it.duplicatePhones.size },
             failed = failed,
         )
+    }
+
+    var pendingPhoneImport by remember { mutableStateOf<List<Entry>?>(null) }
+
+    fun startBackgroundImport(entries: List<Entry>) {
+        val userId = currentUser?.id
+        if (userId.isNullOrBlank()) { step = Step.Failed("Sign in to import contacts into your Persora account."); return }
+        val total = entries.count { it.selected }
+        step = Step.Reading("Starting background import…")
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { ContactImportWork.enqueue(context, entries, userId) }
+                notify("Importing $total phone contacts in the background. You can leave this screen; progress is in Notifications.", false)
+                onDismiss()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { step = Step.Failed(e.message ?: "Couldn't start the background contact import.") }
+        }
+    }
+
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val entries = pendingPhoneImport
+        pendingPhoneImport = null
+        if (entries != null) {
+            if (!granted) notify("Notifications are off. The import will continue; progress remains in Persora Notifications.", false)
+            startBackgroundImport(entries)
+        }
+    }
+    fun queuePhoneImport(entries: List<Entry>) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            pendingPhoneImport = entries
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else startBackgroundImport(entries)
     }
 
     fun importFile(uri: Uri) {
@@ -122,9 +157,7 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
                 val entries = withContext(Dispatchers.Default) { ContactImport.prepare(drafts, contacts) }
                 val toImport = entries.filter { it.selected }
                 if (toImport.isEmpty()) { step = Step.Done(ContactImport.Summary(0, entries.count { it.duplicateOf.isNotBlank() }, entries.sumOf { it.invalidPhones.size }, entries.sumOf { it.duplicatePhones.size }, emptyList())); return@launch }
-                val summary = runImport(entries)
-                step = Step.Done(summary)
-                if (summary.imported > 0) notify("${summary.imported} contact${if (summary.imported == 1) "" else "s"} imported from your phone.", false)
+                queuePhoneImport(entries)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { step = Step.Failed(humanizeError(e.message ?: "Couldn't read your phone contacts.", "error").first) }
         }
     }
@@ -150,7 +183,7 @@ fun ContactImportSheet(onDismiss: () -> Unit) {
                     Text("Same rules as the website: invalid numbers are dropped, numbers already saved on another contact are filtered out, and people who already exist are flagged as duplicates instead of being added twice.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
                 }
                 is Step.Reading -> Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = Bento.primary); Spacer(Modifier.height(14.dp)); Text(s.label, style = MaterialTheme.typography.bodyMedium, color = Bento.mutedFg) }
-                is Step.Preview -> PreviewList(s.entries, s.source, onToggle = { idx -> step = Step.Preview(s.entries.mapIndexed { i, e -> if (i == idx) e.copy(selected = !e.selected) else e }, s.source) }, onAll = { on -> step = Step.Preview(s.entries.map { it.copy(selected = on && it.hasUsableData) }, s.source) }, onBack = { step = Step.Pick }) {
+                is Step.Preview -> PreviewList(s.entries, s.source, canUpload = canUpload, onToggle = { idx -> step = Step.Preview(s.entries.mapIndexed { i, e -> if (i == idx) e.copy(selected = !e.selected) else e }, s.source) }, onAll = { on -> step = Step.Preview(s.entries.map { it.copy(selected = on && it.hasUsableData) }, s.source) }, onBack = { step = Step.Pick }) {
                     scope.launch { try { step = Step.Done(runImport(s.entries)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { step = Step.Failed(humanizeError(e.message ?: "The contacts couldn't be imported.", "error").first) } }
                 }
                 is Step.Importing -> Column(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -186,7 +219,7 @@ private fun SourceTile(icon: ImageVector, title: String, body: String, tag: Stri
 }
 
 @Composable
-private fun PreviewList(entries: List<Entry>, source: String, onToggle: (Int) -> Unit, onAll: (Boolean) -> Unit, onBack: () -> Unit, onImport: () -> Unit) {
+private fun PreviewList(entries: List<Entry>, source: String, canUpload: Boolean, onToggle: (Int) -> Unit, onAll: (Boolean) -> Unit, onBack: () -> Unit, onImport: () -> Unit) {
     val chosen = entries.count { it.selected }
     val dupes = entries.count { it.duplicateOf.isNotBlank() }
     val invalid = entries.sumOf { it.invalidPhones.size }
@@ -198,6 +231,7 @@ private fun PreviewList(entries: List<Entry>, source: String, onToggle: (Int) ->
             if (invalid > 0) Pill("$invalid invalid number${if (invalid == 1) "" else "s"}", Tones.Red)
             if (dupNumbers > 0) Pill("$dupNumbers repeated number${if (dupNumbers == 1) "" else "s"}", Tones.Neutral)
         }
+        if (!canUpload && entries.any { it.draft.photo != null }) Text("Contact details can still be imported; embedded photos will be skipped until an active paid plan is available.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg, modifier = Modifier.padding(top = 6.dp))
         Row(Modifier.padding(top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("$chosen selected", style = MonoCaption, color = Bento.mutedFg, modifier = Modifier.weight(1f))
             TextButton(onClick = { onAll(true) }) { Text("Select all") }; TextButton(onClick = { onAll(false) }) { Text("None") }

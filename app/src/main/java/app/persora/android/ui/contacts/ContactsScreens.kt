@@ -42,8 +42,8 @@ import app.persora.android.data.model.CONTACT_CATEGORIES
 import app.persora.android.data.model.ContactPhone
 import app.persora.android.data.model.PersoraContact
 import app.persora.android.ui.components.*
-import app.persora.android.ui.calls.rememberCaller
 import app.persora.android.ui.navigation.Details
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.ui.navigation.LocalNav
 import app.persora.android.ui.navigation.LocalNotify
 import app.persora.android.ui.navigation.Routes
@@ -89,7 +89,7 @@ fun ContactsScreen() {
     }
     val grouped = remember(visible) { visible.groupBy { if (it.favorite) "★ Favorites" else it.name.firstOrNull()?.uppercaseChar()?.toString() ?: "#" } }
 
-    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, floatingActionButton = { ExtendedFloatingActionButton(onClick = { nav.navigate(Routes.contactEditor()) }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") }) }) { padding ->
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, floatingActionButton = { ExtendedFloatingActionButton(onClick = { EditorDrawer.openContact() }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(14.dp, 14.dp, 14.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -166,7 +166,6 @@ fun ContactDetailScreen(id: String, onClose: (() -> Unit)? = null) {
     var confirmDelete by remember { mutableStateOf(false) }
     var showQr by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
-    val call = rememberCaller()
     if (contact == null) { EmptyState("Contact not found", "It may have been removed on another device.", Icons.Outlined.PersonOff) { QuietButton("Go back", onClick = { close() }) }; return }
     val readOnly = sharedEntry != null
 
@@ -177,7 +176,7 @@ fun ContactDetailScreen(id: String, onClose: (() -> Unit)? = null) {
             if (!readOnly) IconButton(onClick = { scope.launch { runCatchingSafe { vault.saveContact(contact.copy(favorite = !contact.favorite), false) }.onFailure { notify(it.message ?: "Could not update.", true) } } }) { Icon(if (contact.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, "Favorite", tint = if (contact.favorite) Accents.amber.c500 else Bento.mutedFg) }
             IconButton(onClick = { showQr = true }) { Icon(Icons.Outlined.QrCode2, "QR", tint = Bento.mutedFg) }
             if (!readOnly) IconButton(onClick = { shareOpen = true }) { Icon(Icons.Outlined.Share, "Share", tint = Bento.mutedFg) }
-            if (!readOnly) IconButton(onClick = { val target = Routes.contactEditor(contact.id); if (onClose != null) onClose(); nav.navigate(target) }) { Icon(Icons.Outlined.Edit, "Edit", tint = Bento.mutedFg) }
+            if (!readOnly) IconButton(onClick = { onClose?.invoke(); EditorDrawer.openContact(contact.id) }) { Icon(Icons.Outlined.Edit, "Edit", tint = Bento.mutedFg) }
             if (!readOnly) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Bento.danger) }
         }
     }) { padding ->
@@ -191,7 +190,6 @@ fun ContactDetailScreen(id: String, onClose: (() -> Unit)? = null) {
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 contact.phoneNumbers.firstOrNull()?.let { p ->
-                    ActionCircle(Icons.Outlined.Call, "Call") { call(p.number, contact.name) }
                     ActionCircle(Icons.Outlined.Sms, "Message") { context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:${p.number}"))) }
                 }
                 if (contact.email.isNotBlank()) ActionCircle(Icons.Outlined.Email, "Email") { context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${contact.email}"))) }
@@ -201,7 +199,7 @@ fun ContactDetailScreen(id: String, onClose: (() -> Unit)? = null) {
             }
             Spacer(Modifier.height(18.dp))
             BentoCard(Modifier.fillMaxWidth()) {
-                contact.phoneNumbers.forEach { p -> Row(Modifier.fillMaxWidth().clickable { call(p.number, contact.name) }.padding(vertical = 6.dp)) { Column { Text(p.label, style = MaterialTheme.typography.labelMedium, color = Bento.subtleFg); Text(p.number, style = MaterialTheme.typography.bodyMedium, color = Bento.primary, fontWeight = FontWeight.Medium) } } }
+                contact.phoneNumbers.forEach { p -> Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) { Column { Text(p.label, style = MaterialTheme.typography.labelMedium, color = Bento.subtleFg); Text(p.number, style = MaterialTheme.typography.bodyMedium, color = Bento.fg, fontWeight = FontWeight.Medium) } } }
                 if (contact.email.isNotBlank()) DetailRow("Email", contact.email)
                 if (contact.address.isNotBlank()) DetailRow("Address", contact.address)
                 if (contact.birthday.isNotBlank()) DetailRow("Birthday", Dates.formatDate(contact.birthday) + (Dates.parseLocalDate(contact.birthday)?.let { b -> val next = b.withYear(java.time.LocalDate.now().year).let { if (it.isBefore(java.time.LocalDate.now())) it.plusYears(1) else it }; " · in ${java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), next)} days" } ?: ""))
@@ -226,30 +224,36 @@ private fun ActionCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 /* ---------------- Editor ---------------- */
 
 @Composable
-fun ContactEditorScreen(id: String?) {
+fun ContactEditorScreen(id: String?, initialCategory: String? = null, onClose: (() -> Unit)? = null) {
     val context = LocalContext.current
     val container = context.appContainer
     val vault = container.vault
     val nav = LocalNav.current
+    val closeEditor: () -> Unit = onClose ?: { nav.popBackStack() }
     val notify = LocalNotify.current
     val scope = rememberCoroutineScope()
     val contacts by vault.contacts.collectAsStateWithLifecycle()
     val existing = contacts.firstOrNull { it.id == id }
-    var name by rememberSaveable { mutableStateOf(existing?.name.orEmpty()) }
-    var phones by remember { mutableStateOf(existing?.phoneNumbers?.ifEmpty { null } ?: listOf(ContactPhone("Mobile", ""))) }
-    var email by rememberSaveable { mutableStateOf(existing?.email.orEmpty()) }
-    var company by rememberSaveable { mutableStateOf(existing?.company.orEmpty()) }
-    var jobTitle by rememberSaveable { mutableStateOf(existing?.jobTitle.orEmpty()) }
-    var address by rememberSaveable { mutableStateOf(existing?.address.orEmpty()) }
-    var birthday by rememberSaveable { mutableStateOf(existing?.birthday.orEmpty()) }
-    var notes by rememberSaveable { mutableStateOf(existing?.notes.orEmpty()) }
-    var category by rememberSaveable { mutableStateOf(existing?.category ?: "Other") }
+    val canUpload = observeCurrentUser()?.uploadsEnabled == true
+    var name by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
+    var phones by remember(id, existing?.id) { mutableStateOf(existing?.phoneNumbers?.ifEmpty { null } ?: listOf(ContactPhone("Mobile", ""))) }
+    var email by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.email.orEmpty()) }
+    var company by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.company.orEmpty()) }
+    var jobTitle by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.jobTitle.orEmpty()) }
+    var address by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.address.orEmpty()) }
+    var birthday by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.birthday.orEmpty()) }
+    var notes by rememberSaveable(id, existing?.id) { mutableStateOf(existing?.notes.orEmpty()) }
+    var category by rememberSaveable(id, existing?.id, initialCategory) { mutableStateOf(existing?.category ?: initialCategory ?: "Other") }
     var photo by remember { mutableStateOf<PickedFile?>(null) }
     var removePhoto by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { photo = Files.describe(context, it); removePhoto = false } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null && canUpload) { photo = Files.describe(context, uri); removePhoto = false }
+        else if (uri != null) notify("New contact-photo uploads require an active paid plan. Existing photos remain accessible.", true)
+    }
 
     fun save() {
+        if (photo != null && !canUpload) { notify("New contact-photo uploads require an active paid plan. Existing photos remain accessible.", true); return }
         if (name.isBlank()) { notify("Give this contact a name.", true); return }
         saving = true
         scope.launch {
@@ -261,14 +265,14 @@ fun ContactEditorScreen(id: String?) {
                 photo?.let { p -> if (p.size > 5L * 1024 * 1024) error("Photos must be 5 MB or smaller."); val up = withContext(Dispatchers.IO) { container.api.uploadVaultFile(p.name, p.mime, p.size, { p.open(context) }) }; photoKey = up.key; uploadedKey = up.key }
                 val draft = (existing ?: PersoraContact(id = UUID.randomUUID().toString(), name = "")).copy(name = name.trim(), phoneNumbers = cleanPhones, email = email.trim(), company = company.trim(), jobTitle = jobTitle.trim(), address = address.trim(), birthday = birthday, notes = notes.trim(), category = category, photoKey = photoKey)
                 try { vault.saveContact(draft, existing == null) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { uploadedKey?.let { k -> runCatchingSafe { container.api.deleteVaultFile(k) } }; throw e }
-                notify(if (existing == null) "Contact added." else "Contact updated.", false); nav.popBackStack()
+                notify(if (existing == null) "Contact added." else "Contact updated.", false); closeEditor()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { notify(e.message ?: "Could not save contact.", true) } finally { saving = false }
         }
     }
 
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, topBar = {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Outlined.Close, "Cancel", tint = Bento.mutedFg) }
+            IconButton(onClick = closeEditor) { Icon(Icons.Outlined.Close, "Cancel", tint = Bento.mutedFg) }
             Column(Modifier.weight(1f)) { Eyebrow("People"); Text(if (existing == null) "New contact" else "Edit contact", style = MaterialTheme.typography.titleMedium, color = Bento.fg) }
             PrimaryButton("Save", ::save, enabled = !saving, loading = saving)
         }
@@ -283,10 +287,14 @@ fun ContactEditorScreen(id: String?) {
                     }
                     Row {
                         if (photo != null || (existing?.photoKey != null && !removePhoto)) SmallFloatingActionButton(onClick = { photo = null; removePhoto = true }, containerColor = Bento.card, contentColor = Bento.danger, shape = CircleShape) { Icon(Icons.Outlined.Delete, "Remove photo", Modifier.size(16.dp)) }
-                        SmallFloatingActionButton(onClick = { picker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, containerColor = Bento.primary, contentColor = Bento.primaryFg, shape = CircleShape) { Icon(Icons.Outlined.PhotoCamera, "Photo", Modifier.size(16.dp)) }
+                        SmallFloatingActionButton(onClick = {
+                            if (canUpload) picker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            else notify("New contact-photo uploads require an active paid plan. Existing photos remain accessible.", true)
+                        }, containerColor = if (canUpload) Bento.primary else Bento.muted, contentColor = if (canUpload) Bento.primaryFg else Bento.subtleFg, shape = CircleShape) { Icon(Icons.Outlined.PhotoCamera, "Photo", Modifier.size(16.dp)) }
                     }
                 }
             }
+            if (!canUpload) Text("Adding and editing contact details remains available. New contact photos need an active paid plan.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
             BentoCard {
                 TextInput(name, { name = it }, "Full name", required = true)
                 Spacer(Modifier.height(10.dp)); SelectInput(category, CONTACT_CATEGORIES, { category = it }, "Category", allowEmpty = false)

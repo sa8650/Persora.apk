@@ -53,7 +53,10 @@ fun BillingScreen() {
     var snapshot by remember { mutableStateOf<BillingSnapshot?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var checkout by remember { mutableStateOf<SubscriptionPlan?>(null) }
-    fun reload() { scope.launch { runCatchingSafe { api.loadBilling() }.onSuccess { snapshot = it; error = null; container.vault.storage.value = it.storage }.onFailure { error = humanizeError(it.message ?: "Couldn't load billing.", "error").first } } }
+    fun reload() { scope.launch { runCatchingSafe { api.loadBilling() }.onSuccess { billing ->
+        snapshot = billing; error = null; container.vault.storage.value = billing.storage
+        container.session.currentUser?.let { current -> container.session.updateUser(current.copy(uploadsEnabled = billing.uploadsEnabled)) }
+    }.onFailure { error = humanizeError(it.message ?: "Couldn't load billing.", "error").first } } }
     LaunchedEffect(Unit) { reload() }
 
     val snap = snapshot
@@ -67,6 +70,12 @@ fun BillingScreen() {
     val lastSynced by container.vault.lastSyncedAt.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp, 14.dp, 14.dp, 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { StorageCard(vaultItems, snap.storage, offline, lastSynced) }
+        item {
+            val allowed = snap.uploadsEnabled
+            Notice(if (allowed) Icons.Outlined.CloudDone else Icons.Outlined.CloudOff,
+                if (allowed) "Your paid plan is active. New uploads are enabled, and your existing files are available."
+                else "You can still add, edit and delete records. New file uploads require an active paid plan; previously uploaded files remain accessible.")
+        }
         item {
             BentoCard {
                 SectionHeading("Current plan", snap.subscription.plan_name.ifBlank { snap.storage.planName.ifBlank { "Free" } }) { Pill(snap.subscription.status.ifBlank { "active" }, if (snap.subscription.status == "active" || snap.subscription.status.isBlank()) Tones.Green else Tones.Amber) }

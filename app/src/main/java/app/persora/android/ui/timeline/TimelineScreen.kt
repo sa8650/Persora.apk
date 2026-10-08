@@ -111,6 +111,7 @@ private fun TimelineEditorSheet(existing: TimelineEvent?, onDismiss: () -> Unit,
     val vault = container.vault
     val notify = LocalNotify.current
     val scope = rememberCoroutineScope()
+    val canUpload = observeCurrentUser()?.uploadsEnabled == true
     var title by remember { mutableStateOf(existing?.title.orEmpty()) }
     var date by remember { mutableStateOf(existing?.eventDate?.take(10) ?: Dates.today()) }
     var description by remember { mutableStateOf(existing?.description.orEmpty()) }
@@ -118,7 +119,10 @@ private fun TimelineEditorSheet(existing: TimelineEvent?, onDismiss: () -> Unit,
     var picked by remember { mutableStateOf<PickedFile?>(null) }
     var removeAttachment by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { picked = Files.describe(context, it); removeAttachment = false } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && canUpload) { picked = Files.describe(context, uri); removeAttachment = false }
+        else if (uri != null) notify("New timeline attachments require an active paid plan. Existing files remain accessible.", true)
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Bento.card, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -129,11 +133,13 @@ private fun TimelineEditorSheet(existing: TimelineEvent?, onDismiss: () -> Unit,
             TextInput(url, { url = it }, "Link", keyboard = KeyboardType.Uri, placeholder = "https://")
             val current = picked?.name ?: existing?.attachment?.takeIf { !removeAttachment }?.name
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SoftButton(if (current == null) "Attach a photo or file" else "Replace file", onClick = { picker.launch(arrayOf("*/*")) }, icon = Icons.Outlined.AttachFile)
+                SoftButton(if (current == null) "Attach a photo or file" else "Replace file", onClick = { if (canUpload) picker.launch(arrayOf("*/*")) }, icon = Icons.Outlined.AttachFile, enabled = canUpload)
                 if (current != null) { Spacer(Modifier.width(8.dp)); Text(current, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg, maxLines = 1, overflow = TextOverflow.Ellipsis); IconButton(onClick = { picked = null; removeAttachment = true }) { Icon(Icons.Outlined.Close, "Remove", tint = Bento.danger) } }
             }
+            if (!canUpload) Text("New attachments need an active paid plan. Existing milestone files remain accessible while you edit the text.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 PrimaryButton("Save", onClick = {
+                    if (picked != null && !canUpload) { notify("New timeline attachments require an active paid plan. Existing files remain accessible.", true); return@PrimaryButton }
                     if (title.isBlank() || date.isBlank()) { notify("Add a title and date.", true); return@PrimaryButton }
                     saving = true
                     scope.launch {

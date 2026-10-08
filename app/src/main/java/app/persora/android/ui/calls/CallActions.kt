@@ -27,9 +27,9 @@ import app.persora.android.ui.theme.Accents
 import app.persora.android.ui.theme.Tones
 
 /**
- * Returns a `call(number, displayName)` action that behaves like the stock phone app: asks for the phone permission
- * once, shows a "Choose SIM" sheet on dual-SIM phones (unless a default SIM is set in system settings), then places
- * the call directly through Telecom — no external dialer screen.
+ * Returns a `call(number, displayName)` action that asks for phone permission when needed, offers a SIM choice on
+ * dual-SIM phones without a system default, then asks Android Telecom to place the call. Android owns the call UI;
+ * Persora does not act as the dialer or draw a custom in-call screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,27 +81,6 @@ fun rememberCaller(): (String, String?) -> Unit {
             if (clean.isBlank()) notify("That contact has no phone number.", true)
             else if (Calls.hasCallPermission(context)) proceed(clean, name)
             else { pending = clean to name; permission.launch(Calls.CALL_PERMISSIONS) }
-        }
-    }
-}
-
-/** Card nudging the member to make Persora the phone app so calls use Persora's own in-call screen. */
-@Composable
-fun DefaultDialerCard(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val notify = LocalNotify.current
-    var isDefault by remember { mutableStateOf(Calls.isDefaultDialer(context)) }
-    val roleRequest = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { isDefault = Calls.isDefaultDialer(context); if (isDefault) notify("Persora is now your phone app.", false) }
-    if (isDefault || !Calls.supportsDialerRole(context)) return
-    app.persora.android.ui.components.BentoCard(modifier = modifier, padding = 14.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ToneIconBox(Icons.Outlined.PhoneInTalk, Tones.Blue, size = 38.dp); Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Use Persora's in-call screen", style = MaterialTheme.typography.titleSmall, color = Bento.fg)
-                Text("Make Persora your phone app so calls open here instead of the system dialer.", style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
-            }
-            Spacer(Modifier.width(8.dp))
-            app.persora.android.ui.components.SoftButton("Set up", onClick = { runCatching { roleRequest.launch(Calls.requestDefaultDialerIntent(context)) }.onFailure { notify("Couldn't open the phone-app picker.", true) } })
         }
     }
 }

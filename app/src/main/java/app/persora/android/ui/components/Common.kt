@@ -222,9 +222,9 @@ fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 
 /** shadcn `variant="secondary"`. */
 @Composable
-fun SoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
-    Button(onClick = onClick, modifier = modifier.height(38.dp), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 14.dp), elevation = null,
-        colors = ButtonDefaults.buttonColors(containerColor = Bento.muted, contentColor = Bento.fg)) {
+fun SoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true) {
+    Button(onClick = onClick, enabled = enabled, modifier = modifier.height(38.dp), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 14.dp), elevation = null,
+        colors = ButtonDefaults.buttonColors(containerColor = Bento.muted, contentColor = Bento.fg, disabledContainerColor = Bento.muted.copy(alpha = 0.5f), disabledContentColor = Bento.subtleFg)) {
         if (icon != null) { Icon(icon, null, Modifier.size(15.dp)); Spacer(Modifier.width(7.dp)) }
         Text(text, style = MaterialTheme.typography.labelLarge)
     }

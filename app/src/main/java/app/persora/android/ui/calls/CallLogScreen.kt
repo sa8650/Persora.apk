@@ -37,7 +37,6 @@ import app.persora.android.ui.components.*
 import app.persora.android.ui.contacts.ContactPhoto
 import app.persora.android.ui.navigation.Details
 import app.persora.android.ui.navigation.LocalNav
-import app.persora.android.ui.navigation.Routes
 import app.persora.android.ui.theme.Bento
 import app.persora.android.ui.theme.Accents
 import app.persora.android.ui.theme.Tones
@@ -49,7 +48,7 @@ import java.time.format.DateTimeFormatter
 /** "Recents" like every phone app: system call log (when permitted) merged with Persora's own calls, plus a dialpad. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CallLogScreen(initialDial: String? = null) {
+fun CallLogScreen() {
     val context = LocalContext.current
     val nav = LocalNav.current
     val vault = context.appContainer.vault
@@ -59,8 +58,8 @@ fun CallLogScreen(initialDial: String? = null) {
     var systemLog by remember { mutableStateOf<List<CallEntry>?>(null) }
     var hasLogPermission by remember { mutableStateOf(Calls.hasCallLogPermission(context)) }
     var filter by rememberSaveable { mutableStateOf(0) }
-    var dial by rememberSaveable { mutableStateOf(initialDial != null) }
-    var dialNumber by rememberSaveable { mutableStateOf(initialDial.orEmpty()) }
+    var dial by rememberSaveable { mutableStateOf(false) }
+    var dialNumber by rememberSaveable { mutableStateOf("") }
     var refreshTick by remember { mutableStateOf(0) }
 
     val logPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasLogPermission = granted; refreshTick++ }
@@ -81,7 +80,6 @@ fun CallLogScreen(initialDial: String? = null) {
         FloatingActionButton(onClick = { dial = true }, containerColor = Bento.primary, contentColor = Bento.primaryFg, shape = CircleShape) { Icon(Icons.Outlined.Dialpad, "Dialpad") }
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(14.dp, 14.dp, 14.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { DefaultDialerCard() }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SegmentedTabs(listOf("All", "Missed"), filter, { filter = it }, Modifier.weight(1f))

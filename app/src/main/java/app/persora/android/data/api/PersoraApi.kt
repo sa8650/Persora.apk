@@ -41,12 +41,15 @@ class PersoraApi(private val client: ApiClient) {
     suspend fun updateProfile(fullName: String, timezone: String, avatarUrl: String?) {
         client.patch("/profile", buildJsonObject { put("fullName", fullName); put("timezone", timezone); if (avatarUrl != null) put("avatarUrl", avatarUrl) })
     }
+    suspend fun sendEmailVerificationCode(): Boolean = client.post("/email-verification/send", buildJsonObject {}).obj()["alreadyVerified"].bool()
+    suspend fun verifyEmailVerificationCode(code: String): AppUser = parseUser(client.post("/email-verification/verify", buildJsonObject { put("code", code) }).obj()["user"].obj())
     suspend fun deleteAccount() { client.delete("/account") }
     suspend fun health(): Boolean = runCatching { client.get("/health").obj()["ok"].bool() }.getOrDefault(false)
 
     private fun parseUser(o: JsonObject?): AppUser = AppUser(
         id = o["id"].str(), userId = o["userId"].str(), email = o["email"].str(), fullName = o["fullName"].str("Persora member"),
         role = o["role"].str("user"), timezone = o["timezone"].str("Asia/Dhaka"), avatarUrl = o["avatarUrl"].str(),
+        emailVerified = o["emailVerified"].bool(), uploadsEnabled = o["uploadsEnabled"].bool(),
     )
 
     /* ===================== Vault items / folders ===================== */
@@ -107,8 +110,8 @@ class PersoraApi(private val client: ApiClient) {
 
     suspend fun loadContacts(): List<PersoraContact> = client.get("/contacts").arr().map { contactFromRow(it.obj()) }
 
-    suspend fun saveContact(c: PersoraContact, isNew: Boolean, expectedUpdatedAt: String? = null): PersoraContact = contactFromRow(client.post("/contacts", buildJsonObject {
-        if (!isNew) put("id", c.id)
+    suspend fun saveContact(c: PersoraContact, isNew: Boolean, expectedUpdatedAt: String? = null, idempotentCreate: Boolean = false): PersoraContact = contactFromRow(client.post("/contacts", buildJsonObject {
+        if (!isNew || idempotentCreate) put("id", c.id)
         put("name", c.name); putJsonArray("phoneNumbers") { c.phoneNumbers.forEach { p -> addJsonObject { put("label", p.label); put("number", p.number) } } }
         put("email", c.email); put("company", c.company); put("jobTitle", c.jobTitle); put("address", c.address); put("birthday", c.birthday); put("notes", c.notes)
         put("category", c.category); put("favorite", c.favorite)
@@ -167,7 +170,7 @@ class PersoraApi(private val client: ApiClient) {
         }
         return MedicalRecord(
             id = o["id"].str(), title = o["title"].str(), recordType = o["record_type"].str("Other"), recordDate = o["record_date"].str(), provider = o["provider"].str(),
-            hospital = o["hospital"].str(), specialty = o["specialty"].str(), notes = o["notes"].str(), diagnosis = o["diagnosis"].str(), testName = o["test_name"].str(),
+            hospital = o["hospital"].str(), specialty = o["specialty"].str(), notes = o["notes"].str(), additionalData = o["additional_data"].str(), diagnosis = o["diagnosis"].str(), testName = o["test_name"].str(),
             testResult = o["test_result"].str(), medicationNotes = o["medication_notes"].str(), followUpDate = o["follow_up_date"].str(), relatedReminderId = o["related_reminder_id"].strOrNull(),
             file = fileName?.let { MedicalRecordFile(o["file_key"].strOrNull(), it, o["file_size"].long(), o["file_type"].str("application/octet-stream")) },
             links = links.filter { it.linkKind != "reminder" }, folderId = o["folder_id"].strOrNull(), createdAt = o["created_at"].str(), updatedAt = o["updated_at"].str(),
@@ -179,7 +182,7 @@ class PersoraApi(private val client: ApiClient) {
     suspend fun saveMedicalRecord(r: MedicalRecord, isNew: Boolean, removeFile: Boolean = false): MedicalRecord = medicalRecordFromRow(client.post("/medical-records", buildJsonObject {
         if (!isNew) put("id", r.id)
         put("title", r.title); put("recordType", r.recordType); put("recordDate", r.recordDate); put("provider", r.provider); put("hospital", r.hospital); put("specialty", r.specialty)
-        put("notes", r.notes); put("diagnosis", r.diagnosis); put("testName", r.testName); put("testResult", r.testResult); put("medicationNotes", r.medicationNotes); put("followUpDate", r.followUpDate)
+        put("notes", r.notes); put("additionalData", r.additionalData); put("diagnosis", r.diagnosis); put("testName", r.testName); put("testResult", r.testResult); put("medicationNotes", r.medicationNotes); put("followUpDate", r.followUpDate)
         if (r.relatedReminderId != null) put("relatedReminderId", r.relatedReminderId) else put("relatedReminderId", JsonNull)
         putJsonArray("links") { r.links.forEach { l -> addJsonObject { put("recordType", l.recordType); put("recordId", l.recordId); put("linkKind", l.linkKind) } } }
         if (removeFile || r.file?.key == null) put("file", JsonNull) else putJsonObject("file") { put("key", r.file.key); put("name", r.file.name); put("size", r.file.size); put("type", r.file.type) }

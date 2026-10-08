@@ -4,8 +4,9 @@ A **native** Kotlin + Jetpack Compose client for [Persora](https://persora.pages
 
 - **Same account, same vault.** The app talks to the existing Cloudflare Pages Functions API at `https://persora.pages.dev/api`, which means the same Supabase database, the same R2 file storage and the same session cookies as the website. Nothing is duplicated and no Supabase/R2 keys ship in the APK.
 - **Not a WebView.** Every screen is Compose. The website's theme tokens (`src/index.css`, `src/persora-theme.css`) are ported to `ui/theme`, and the boot animation is a faithful Compose port of `PersoraBootScreen.tsx` (three orbiting rings of icons around the ShieldCheck core).
-- **Phone + tablet.** Bottom navigation on phones, a navigation rail on medium widths, and a permanent sidebar (the website's left nav) on expanded widths.
+- **Phone + tablet.** Phone navigation keeps Home, Spaces, Tasks and More in the tab bar with a central Add document action; Contacts and the separate Calls page are under More. Medium widths use a navigation rail and expanded widths use a permanent sidebar.
 - **Member features only.** The admin console stays on the website — admins still sign in here as regular members.
+- **Calls use Android's system UI.** Persora retains its in-app call log and dialpad, but does not request the default-dialer role or provide a custom in-call screen.
 
 ## Project layout
 
@@ -37,13 +38,14 @@ app/src/main/java/app/persora/android/
     ├── vault/                 SectionScreen (folders, search, filters, notes tabs, wallet-card visuals, finance totals),
     │                          ItemDetailScreen (file preview/open/share, QR, sharing), ItemEditorScreen (dynamic form from
     │                          Sections, Smart Scan, file/camera upload with progress, card masking, reminder/alarm editors)
-    ├── contacts/              List with duplicate detection + merge, detail (call/SMS/email/save to phone, vCard QR, share), editor with photo
+    ├── contacts/              List, detail, editor, duplicate detection + merge, vCard/CSV and phone-contact import
+    ├── calls/                 Separate in-app call history and dialpad; outgoing calls use Android's system call UI
     ├── medical/               Records list with follow-ups, editor with file upload, linked records, optional reminder
     ├── timeline/              Life timeline (auto + manual milestones, attachments)
     ├── shared/                Shared with me / by me, permissions, comments
     ├── businesscards/         Card manager, 4 styles, editor, public card viewer with QR/report
     ├── billing/               Storage usage, plans, manual payment checkout, history
-    ├── settings/              Profile, app lock, password, Android permissions, export, legal, sign out / delete
+    ├── settings/              Profile and email verification, app lock, password, Android permissions, export, legal, sign out / delete
     └── search/                Global search across records, people, medical, cards, timeline
 ```
 
@@ -51,17 +53,9 @@ app/src/main/java/app/persora/android/
 
 Requirements: **Android Studio Ladybug (2024.2) or newer**, JDK 17, Android SDK 35.
 
-```bash
-git clone <this repo> PersoraAndroid
-cd PersoraAndroid
-# Open in Android Studio → let Gradle sync → Run ▶ on a device/emulator (API 26+)
-# or from the command line:
-./gradlew :app:assembleDebug
-```
+Open this project directory in Android Studio, allow Gradle to sync, and run the `app` configuration on a device or emulator (API 26+). The project uses JDK 17 and Android SDK 35. This tree does not include a Gradle wrapper, so `./gradlew` is not available unless a wrapper is added.
 
-> The sandbox this project was authored in has no Android SDK, so the code has not yet been compiled. Expect a handful of
-> small compiler nits (an import or a named-argument tweak) on the first sync — the architecture, API contract and
-> screens are complete. Fix-forward in Android Studio; nothing structural should need to change.
+> Android compilation has not been verified in this workspace: it has no Android SDK or Gradle installation, and its available Java is JDK 11. Validate with Android Studio/JDK 17 before release.
 
 ### Configuration
 
@@ -95,11 +89,13 @@ The API already does everything the app needs, but two things are worth knowing:
 | 13 vault sections with dynamic forms | ✅ driven by `Sections.kt` |
 | Folders (per section), favourites, pins | ✅ |
 | File upload (25 MB) / view / share | ✅ via `/api/upload` + `/api/file` |
-| Smart Scan | ✅ |
+| Smart Scan | ✅; matching suggestions map to fields and remaining readable facts go to editable Additional Data |
+| Family-linked document fields | ✅; saves stable member IDs, with Me as a special choice |
 | Notes / tasks / reminders / alarms | ✅ + real Android alarms with ringtone + full-screen ringing |
 | Wallet cards (masked) | ✅ |
 | Personal finance totals | ✅ |
-| Contacts (photos, duplicates, merge, vCard QR) | ✅ + call / SMS / save to phone |
+| Contacts (photos, duplicates, merge, vCard QR, CSV/vCard import) | ✅ + background phone-contact import with notification progress |
+| Calls (separate call log and in-app dialpad) | ✅; Android system call UI, no custom in-call screen/default-dialer role |
 | Medical records (files, follow-ups, links) | ✅ |
 | Life timeline | ✅ |
 | Sharing (documents, contacts, cards), permissions, comments | ✅ |
@@ -133,13 +129,11 @@ New dependencies: `io.coil-kt:coil-svg`, `androidx.exifinterface:exifinterface` 
 
 ## Changelog — v1.2
 
-- **Home**: removed the Preferences button and the "Your personal space · date" line; greeting + single Add button.
-- **Calls** (new): `calls/` package — `Calls` (Telecom helpers, SIM options, default-dialer role), `CallManager`, `PersoraInCallService` (InCallService), `InCallActivity` (Persora's own in-call screen: mute / keypad / speaker / hold / Bluetooth, answer & decline, duration), `CallLogStore` (own history + system call log). `ui/calls/CallLogScreen.kt` is the "Recents" page with dialpad FAB, All/Missed filter, call-back, and "Use Persora's in-call screen" set-up card (requests `ROLE_DIALER`). `rememberCaller()` powers every Call button: asks for phone permission once, shows a **Choose SIM** sheet on dual-SIM phones (skipped when a default SIM is set in Android settings), then places the call directly via `TelecomManager.placeCall` — no external dialer. Manifest: `CALL_PHONE`, `READ_PHONE_STATE`, `READ_CALL_LOG`, DIAL/tel intent filters, `BIND_INCALL_SERVICE` service. Calls lives under **More → Calls** and the "Recent calls" chip on Contacts.
+- **Home**: the greeting's Add document button has since been removed; the central Add action in the phone tab bar remains, as do other Add document entry points.
+- **Calls**: the separate in-app call log and dialpad remain under **More → Calls**. When a call is placed or answered, Android presents its system call UI. Persora no longer requests the default-dialer role, declares DIAL/tel intent filters, or includes a custom in-call screen/service/receiver.
 - **Settings**: profile editor (photo · name · time zone) is collapsed behind an **Edit profile** button; it closes after saving.
 - **Toasts**: Material snackbar replaced by `ui/components/Toast.kt` — floating dark card with success/error/info icon, auto-dismiss, tap or swipe-down to dismiss, newest message replaces the previous one. Legacy `notify(message, isError)` calls are classified automatically.
 - Hardening: `Call.Details.callDirection` guarded for API < 29; `ScheduleReceiver` never crashes on ring; cancellation never surfaces as an error.
-
-> If Persora is **not** the default phone app, calls still go out directly (no dialer screen) but Android shows the system in-call UI; tap **Set up** on the Calls page to switch to Persora's screen.
 
 ## Changelog — v1.3
 
@@ -190,7 +184,7 @@ The lavender / liquid-glass theme is gone. Every screen now uses a 1:1 port of t
   (namespace bars + live-sync dot), *Sync pipeline* (animated node graph: phone → router → API → DB / R2),
   *Recently updated*, *Favorites*, plus the getting-started checklist. 2-column on tablets.
 - **Spaces** page = grid of tool tiles; **More** / **Notifications** restyled; boot & onboarding orbit 3-D tiles;
-  in-call screen uses the graphite surface; launcher / splash recoloured; `values-night` resources added.
+  launcher / splash recoloured; `values-night` resources added.
 
 ## Changelog — v2.1
 
@@ -205,7 +199,7 @@ The lavender / liquid-glass theme is gone. Every screen now uses a 1:1 port of t
 
 ## Changelog — v2.2
 
-- **In-call screen, Agent Bento edition** (`calls/InCallActivity.kt`): always-dark bento stack with a dot-grid backdrop, breathing brand glow, header strip (pulsing live dot · `PERSORA CALL` · `IN/OUT · LIVE` status pill), an avatar stage with expanding sonar rings while ringing/dialing and a rotating dashed orbit + marker dot once connected, a status panel with a large mono timer and an 18-bar waveform that "listens" while live, ticks softly while connecting and goes flat on hold, square bento control tiles (staggered entrance, brand-blue when active) and a pulsing emerald Answer button. Keypad tiles are now bento squares in both the in-call and Calls screens.
+- **Calls — current behavior**: the earlier custom in-call UI has been removed. The separate in-app history and dialpad remain; calls are handed to Android's system call UI, and Persora does not request the default-dialer role.
 - **Billing — plans are purchasable** (`ui/billing/BillingScreen.kt`): tapping a plan card (or its new `Choose plan` button) always opens the checkout sheet; your current plan and the free plan explain themselves with a toast. Inside checkout, blockers are shown as amber notices instead of silently disabling the tap (pending review → `Review pending`; billing paused → "Payments are paused…"), and the submit button is only disabled when there is genuinely nothing to submit.
 - **Share dialog — recent recipients** (`ui/vault/ItemDetailScreen.kt`): members you've shared with before (from outgoing vault shares and contact/business-card shares, most recent first, de-duplicated) appear as tappable chips with avatar initials, name and `ID 1234567`; tapping fills the recipient field.
 - **Home**: Spaces card removed from the home grid; **Latest changes** (the rotating activity feed) now sits in its slot right after Coming up.
@@ -214,7 +208,7 @@ The lavender / liquid-glass theme is gone. Every screen now uses a 1:1 port of t
 ## Changelog — v2.3
 
 - **Inline PDF / text preview in the item drawer** (`ui/components/FilePreview.kt`): PDF and text attachments (txt, md, csv, json, log, vcf, xml…) now render directly inside the item view like Google Drive — no external viewer, no third-party API. PDFs are rendered on-device with Android's `PdfRenderer` (lazy per-page rendering, page counter, taller/shorter toggle); text files are shown in a selectable mono panel (first 256 KB). Downloads are cached per file in `cache/previews`. Also used by Medical Records; "Open" / "Share file" still exist for everything else.
-- **Contacts: ⋯ menu + import drawer** (`ui/contacts/ContactImportSheet.kt`, `core/util/ContactImport.kt`): the search box shares its row with a three-dot menu holding *Recent calls*, *Import contacts* and *Merge duplicates*. The import drawer offers (a) **Upload a file** — vCard `.vcf` or CSV (Google Contacts / iCloud / Outlook / generic headers) with the website's preview: invalid numbers skipped, numbers already saved on another contact filtered out, whole-contact duplicates flagged and unselected, embedded photos uploaded, per-contact progress, and a completion summary; (b) **From phone contacts** — asks for `READ_CONTACTS`, reads the address book, and automatically uploads only the people whose numbers aren't in Persora yet (bad numbers skipped, failures listed). Phone normalisation, duplicate keys and union-find duplicate groups are ports of `ContactsView.tsx`; the duplicates banner now uses the same logic as the site.
+- **Contacts: ⋯ menu + import drawer** (`ui/contacts/ContactImportSheet.kt`, `ui/contacts/ContactImportWork.kt`, `core/util/ContactImport.kt`): the search box shares its row with a three-dot menu for *Recent calls*, *Import contacts* and *Merge duplicates*. **Upload a file** accepts vCard `.vcf` or CSV, previews duplicate contacts and duplicate/invalid phone numbers, and lets the member select what to save. **From phone contacts** requests `READ_CONTACTS`, prepares a duplicate-aware selection, then queues the selected import with WorkManager. It can continue after leaving the screen; an ongoing notification reports background progress and the outcome. The queued import payload is encrypted in app-private storage. Phone normalization and duplicate grouping match the website's contact rules.
 - **Tasks / reminders / alarms — Google Tasks style** (`ui/vault/NotesEditorScreen.kt`): full-width editor like the notes editor (no boxed cards): big borderless title, "Add details" row, chips for date / time / repeat with Material pickers, weekday circles, ringtone + Active row, and the favourite star in the top bar exactly like notes (the Favourite switch card is gone).
 - **Billing**: paid plans always show **Select plan**; the pending-review state is explained inside checkout instead of relabelling the buttons.
 - **Note colours** (`ui/theme/NoteColors.kt`): Keep's palette (coral, peach, sand, mint, sage, fog, storm, dusk, blossom, clay, chalk) with light/dark pairs. Palette button in the note editor tints the whole editor; the Notes list uses new Keep-style `NoteCard`s with the colour, body preview and tag chips; the item drawer tints the note body. Stored as metadata `color`.

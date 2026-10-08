@@ -57,13 +57,48 @@ object Sections {
             fields = listOf(
                 f("title", "Document title", placeholder = "e.g. Bangladesh passport", required = true),
                 f("type", "Document type", FieldKind.SELECT, listOf("National ID / NID", "Passport", "Birth certificate", "Student ID", "Job ID / Employee ID", "Driving licence", "Tax ID / TIN", "Visa", "Residence permit", "Work permit", "Health card", "Insurance", "Certificate", "Contract", "CV / Resume", "Other"), required = true),
+                f("name", "Name"),
+                f("studentName", "Student name"),
                 f("documentNumber", "Document number", placeholder = "Optional"),
+                f("studentId", "Student ID"),
+                f("roll", "Roll number"),
+                f("registrationNumber", "Registration number"),
+                f("dateOfBirth", "Date of birth", FieldKind.DATE),
+                f("fatherName", "Father's name"),
+                f("motherName", "Mother's name"),
+                f("address", "Address", FieldKind.TEXTAREA, wide = true),
+                f("institutionName", "Institute name"),
+                f("institutionAddress", "Institute address", FieldKind.TEXTAREA, wide = true),
+                f("phone", "Phone"),
+                f("bloodGroup", "Blood group", FieldKind.SELECT, listOf("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Other")),
+                f("nationality", "Nationality"),
+                f("placeOfBirth", "Place of birth"),
+                f("passportType", "Passport type"),
+                f("passportNumber", "Passport number"),
+                f("visaNumber", "Visa number"),
+                f("country", "Country"),
+                f("visaType", "Visa type"),
+                f("permitNumber", "Permit number"),
+                f("employer", "Employer / organization"),
+                f("employeeId", "Employee ID"),
+                f("jobTitle", "Job title / occupation"),
+                f("department", "Department"),
+                f("licenseClass", "Licence class"),
+                f("taxOffice", "Tax office"),
+                f("insurer", "Insurance provider"),
+                f("memberId", "Member ID"),
+                f("policyNumber", "Policy number"),
+                f("policyType", "Policy type"),
+                f("coverage", "Coverage"),
+                f("startDate", "Start date", FieldKind.DATE),
+                f("issuingAuthority", "Issuing authority"),
+                f("partyName", "Other party"),
+                f("contractNumber", "Contract number"),
                 f("issueDate", "Issue date", FieldKind.DATE),
                 f("expiryDate", "Expiry date", FieldKind.DATE),
-                f("member", "Belongs to", FieldKind.SELECT, listOf("Me", "Spouse", "Father", "Mother", "Child", "Sibling", "Other")),
+                f("member", "Belongs to", FieldKind.SELECT, listOf("Me")),
                 f("targetRole", "Target role", placeholder = "e.g. Product Designer"),
                 f("email", "Contact email", FieldKind.EMAIL),
-                f("phone", "Phone"),
                 f("location", "Location", placeholder = "City, country"),
                 f("portfolio", "LinkedIn / portfolio", FieldKind.URL, placeholder = "https://"),
                 f("summary", "Professional summary", FieldKind.TEXTAREA, wide = true),
@@ -82,6 +117,16 @@ object Sections {
                 f("title", "Record title", placeholder = "e.g. BSc in Computer Science", required = true),
                 f("type", "Record type", FieldKind.SELECT, listOf("SSC / Secondary certificate", "HSC / Higher secondary certificate", "Diploma", "Bachelor's degree", "Master's degree", "PhD", "Mark sheet", "Transcript", "Certificate", "Admission record", "Admission letter", "Admission payment slip", "Admission application", "Exam document", "Training record", "Other"), required = true),
                 f("institution", "Institution", placeholder = "School, college or university"),
+                f("studentName", "Student name"),
+                f("fatherName", "Father's name"),
+                f("motherName", "Mother's name"),
+                f("dateOfBirth", "Date of birth", FieldKind.DATE),
+                f("studentId", "Student ID"),
+                f("roll", "Roll number"),
+                f("registrationNumber", "Registration number"),
+                f("phone", "Phone"),
+                f("address", "Address", FieldKind.TEXTAREA, wide = true),
+                f("institutionAddress", "Institute address", FieldKind.TEXTAREA, wide = true),
                 f("year", "Year completed", placeholder = "e.g. 2024"),
                 f("grade", "Grade / result", placeholder = "Optional"),
                 f("program", "Program / course", placeholder = "e.g. BSc in Computer Science"),
@@ -172,6 +217,10 @@ object Sections {
                 f("financeType", "Finance type", FieldKind.SELECT, listOf("income", "expense", "loan", "asset"), required = true),
                 f("amount", "Amount", FieldKind.NUMBER, required = true),
                 f("currency", "Currency"),
+                f("transactionDate", "Transaction date", FieldKind.DATE),
+                f("category", "Category"), f("counterparty", "Paid to / received from"),
+                f("accountReference", "Account or wallet"), f("dueDate", "Due date", FieldKind.DATE),
+                f("interestRate", "Interest rate"), f("assetType", "Asset type"),
                 f("notes", "Notes", FieldKind.TEXTAREA, wide = true),
             ),
         ),
@@ -184,6 +233,8 @@ object Sections {
                 f("title", "Membership name", placeholder = "e.g. City Library", required = true),
                 f("type", "Membership type", FieldKind.SELECT, listOf("Gym", "Library", "Student", "Professional", "Club", "Loyalty", "Retail", "Travel", "Insurance", "Gaming", "Event", "Community", "Other")),
                 f("organization", "Organization"), f("memberId", "Member ID / card number"),
+                f("studentName", "Student name"), f("studentId", "Student ID"), f("program", "Program / course"),
+                f("phone", "Phone"), f("address", "Address", FieldKind.TEXTAREA, wide = true),
                 f("startDate", "Start date", FieldKind.DATE), f("expiryDate", "Expiry date", FieldKind.DATE),
                 f("level", "Membership level", placeholder = "e.g. Gold"),
                 f("website", "Website", FieldKind.URL, placeholder = "https://"),
@@ -215,6 +266,8 @@ object Sections {
                 f("title", "Material name", placeholder = "e.g. Week 04 — Color systems", required = true),
                 f("course", "Course"), f("subject", "Subject"), f("chapter", "Chapter / topic"),
                 f("materialType", "Material type", FieldKind.SELECT, listOf("PDF", "Notes", "Lecture slides", "Book", "Document", "Image", "Audio", "Video", "Assignment", "Question paper", "Solution", "Research paper", "Link", "Personal notes")),
+                f("author", "Author / instructor"), f("publisher", "Publisher / source"),
+                f("publicationDate", "Published on", FieldKind.DATE), f("sourceUrl", "Source URL", FieldKind.URL, placeholder = "https://"),
                 f("semester", "Semester / year"),
                 f("tags", "Tags", placeholder = "Separate tags with commas"),
                 f("notes", "Notes", FieldKind.TEXTAREA, wide = true),
@@ -266,6 +319,80 @@ object Sections {
 
     val byId: Map<String, SectionDefinition> = all.associateBy { it.id }
     operator fun get(id: String): SectionDefinition = byId[id] ?: all.first()
+
+    private val additionalDataField = f("additionalData", "Additional Data", FieldKind.TEXTAREA, placeholder = "Other information from this record", wide = true)
+
+    /** Type-aware editor schema shared by the Android item form and its Smart Scan field definitions. */
+    fun editorFields(sectionId: String, type: String = "", accountKind: String = "", financeType: String = "", materialType: String = ""): List<FieldDefinition> {
+        val base = get(sectionId).fields
+        val normalizedType = type.trim().lowercase()
+        val keys: Set<String>? = when (sectionId) {
+            "documents" -> when {
+                normalizedType.contains("nid") || normalizedType.contains("national id") || normalizedType.contains("national identity") -> setOf("title", "type", "name", "documentNumber", "dateOfBirth", "fatherName", "motherName", "address", "issueDate", "expiryDate", "bloodGroup", "member", "phone", "notes")
+                normalizedType.contains("student") -> setOf("title", "type", "institutionName", "studentName", "fatherName", "motherName", "dateOfBirth", "studentId", "roll", "registrationNumber", "phone", "address", "institutionAddress", "program", "year", "issueDate", "expiryDate", "notes")
+                normalizedType.contains("passport") -> setOf("title", "type", "name", "documentNumber", "passportType", "nationality", "dateOfBirth", "placeOfBirth", "issueDate", "expiryDate", "member", "notes")
+                normalizedType.contains("birth certificate") -> setOf("title", "type", "name", "documentNumber", "dateOfBirth", "fatherName", "motherName", "address", "issueDate", "member", "notes")
+                normalizedType.contains("job id") || normalizedType.contains("employee") -> setOf("title", "type", "name", "employeeId", "employer", "jobTitle", "department", "phone", "issueDate", "expiryDate", "member", "notes")
+                normalizedType.contains("driving") || normalizedType.contains("licen") -> setOf("title", "type", "name", "documentNumber", "licenseClass", "dateOfBirth", "bloodGroup", "address", "issueDate", "expiryDate", "phone", "notes")
+                normalizedType.contains("tax") || normalizedType.contains("tin") -> setOf("title", "type", "name", "documentNumber", "taxOffice", "address", "issueDate", "phone", "notes")
+                normalizedType.contains("visa") -> setOf("title", "type", "name", "passportNumber", "visaNumber", "country", "visaType", "dateOfBirth", "issueDate", "expiryDate", "notes")
+                normalizedType.contains("residence") -> setOf("title", "type", "name", "permitNumber", "nationality", "address", "issueDate", "expiryDate", "phone", "notes")
+                normalizedType.contains("work permit") -> setOf("title", "type", "name", "permitNumber", "employer", "jobTitle", "passportNumber", "country", "issueDate", "expiryDate", "notes")
+                normalizedType.contains("health card") -> setOf("title", "type", "name", "insurer", "memberId", "policyNumber", "phone", "address", "issueDate", "expiryDate", "notes")
+                normalizedType.contains("insurance") -> setOf("title", "type", "name", "insurer", "policyNumber", "policyType", "coverage", "startDate", "expiryDate", "phone", "address", "notes")
+                normalizedType.contains("certificate") -> setOf("title", "type", "name", "documentNumber", "issuingAuthority", "issueDate", "expiryDate", "member", "notes")
+                normalizedType.contains("contract") -> setOf("title", "type", "partyName", "employer", "contractNumber", "startDate", "expiryDate", "phone", "address", "notes")
+                normalizedType.startsWith("cv") || normalizedType.startsWith("resume") -> setOf("title", "type", "targetRole", "email", "phone", "location", "portfolio", "summary", "experience", "education", "skills", "notes")
+                normalizedType.isBlank() -> setOf("title", "type", "documentNumber", "issueDate", "expiryDate", "member", "phone", "location", "notes")
+                else -> setOf("title", "type", "name", "documentNumber", "issueDate", "expiryDate", "member", "phone", "address", "location", "notes")
+            }
+            "academics" -> if (normalizedType.contains("admission")) {
+                setOf("title", "type", "institution", "studentName", "fatherName", "motherName", "dateOfBirth", "studentId", "roll", "registrationNumber", "phone", "address", "institutionAddress", "program", "admissionSession", "applicationNumber", "paymentAmount", "paymentDate", "notes")
+            } else setOf("title", "type", "institution", "year", "grade", "program", "notes")
+            "accounts" -> if (accountKind.equals("Bank Account", ignoreCase = true))
+                setOf("title", "accountKind", "bankName", "accountHolder", "bankAccountType", "accountNumber", "currency", "branch", "routingNumber", "swiftCode", "iban", "mobileBanking", "website", "notes")
+            else setOf("title", "accountKind", "accountType", "username", "email", "website", "registered", "status", "notes")
+            "memberships" -> when {
+                normalizedType.contains("student") -> setOf("title", "type", "organization", "studentName", "studentId", "program", "memberId", "startDate", "expiryDate", "level", "phone", "address", "website", "notes")
+                normalizedType.contains("gym") -> setOf("title", "type", "organization", "memberId", "startDate", "expiryDate", "level", "phone", "website", "notes")
+                else -> setOf("title", "type", "organization", "memberId", "startDate", "expiryDate", "level", "website", "notes")
+            }
+            "study" -> when {
+                normalizedType == "link" -> setOf("title", "course", "subject", "materialType", "sourceUrl", "semester", "tags", "notes")
+                normalizedType == "book" || normalizedType == "research paper" -> setOf("title", "course", "subject", "chapter", "materialType", "author", "publisher", "publicationDate", "sourceUrl", "semester", "tags", "notes")
+                else -> setOf("title", "course", "subject", "chapter", "materialType", "author", "semester", "tags", "notes")
+            }
+            "personal-finance" -> when (financeType.lowercase()) {
+                "income" -> setOf("title", "financeType", "amount", "currency", "transactionDate", "category", "counterparty", "accountReference", "notes")
+                "expense" -> setOf("title", "financeType", "amount", "currency", "transactionDate", "category", "counterparty", "accountReference", "notes")
+                "loan" -> setOf("title", "financeType", "amount", "currency", "transactionDate", "counterparty", "accountReference", "dueDate", "interestRate", "notes")
+                "asset" -> setOf("title", "financeType", "amount", "currency", "transactionDate", "assetType", "accountReference", "notes")
+                else -> setOf("title", "financeType", "amount", "currency", "notes")
+            }
+            else -> null
+        }
+        var result = if (keys == null) base else base.filter { it.key in keys }
+        if (sectionId == "documents") {
+            val numberLabel = when {
+                normalizedType.contains("nid") || normalizedType.contains("national id") || normalizedType.contains("national identity") -> "NID number"
+                normalizedType.contains("passport") -> "Passport number"
+                normalizedType.contains("birth certificate") -> "Certificate number"
+                normalizedType.contains("driving") || normalizedType.contains("licen") -> "Licence number"
+                normalizedType.contains("tax") || normalizedType.contains("tin") -> "Tax ID / TIN"
+                else -> "Document number"
+            }
+            result = result.map { field ->
+                when (field.key) {
+                    "documentNumber" -> field.copy(label = numberLabel)
+                    "institutionName" -> field.copy(label = "Institute name")
+                    "institutionAddress" -> field.copy(label = "Institute address")
+                    "year" -> field.copy(label = if (normalizedType.contains("student")) "Academic year" else field.label)
+                    else -> field
+                }
+            }
+        }
+        return (result + if (sectionId == "wallet-cards") emptyList() else listOf(additionalDataField)).distinctBy { it.key }
+    }
 
     /** NAV_GROUPS from data.ts */
     val navGroups: List<Pair<String, List<String>>> = listOf(

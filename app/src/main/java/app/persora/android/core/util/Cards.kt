@@ -43,19 +43,28 @@ object Cards {
 
     fun lastFour(number: String): String = number.filter { it.isDigit() }.takeLast(4)
 
-    /** Keeps typed expiry as MM/YY: digits only, max 4, slash inserted after the month; "1" + "3" → "01/3". */
+    /** Keeps typed expiry as MM/YY and normalizes localized decimal digits to ASCII for stable storage. */
     fun formatExpiry(value: String): String {
-        var d = value.filter { it.isDigit() }.take(4)
+        var d = asciiDigits(value).take(4)
         if (d.length == 1 && d[0] in '2'..'9') d = "0$d"
         if (d.length >= 2) { val mm = d.take(2).toInt(); if (mm == 0) d = "01" + d.drop(2) else if (mm > 12) d = "0" + d[0] + d.drop(1).take(2) }
         return if (d.length > 2) d.take(2) + "/" + d.drop(2) else d
     }
 
-    /** Splits "MM/YY" (or MM/YYYY) into (MM, YYYY). */
+    /** Splits MM/YY (or MM/YYYY) into (MM, YYYY); accepts the formatted and digits-only edit values. */
     fun splitExpiry(expiry: String): Pair<String, String>? {
-        val m = Regex("^(0[1-9]|1[0-2])\\s*/\\s*(\\d{2}|\\d{4})$").find(expiry.trim()) ?: return null
-        val month = m.groupValues[1]; val year = m.groupValues[2].let { if (it.length == 2) "20$it" else it }
+        val d = asciiDigits(expiry.trim())
+        if (d.length != 4 && d.length != 6) return null
+        val month = d.take(2)
+        val monthNumber = month.toIntOrNull() ?: return null
+        if (monthNumber !in 1..12) return null
+        val rawYear = d.drop(2)
+        val year = if (rawYear.length == 2) "20$rawYear" else rawYear
         return month to year
+    }
+
+    private fun asciiDigits(value: String): String = buildString {
+        value.forEach { character -> character.digitToIntOrNull()?.let { append(('0'.code + it).toChar()) } }
     }
 
     fun savedExpiry(month: String?, year: String?): String = listOfNotNull(month?.takeIf { it.isNotBlank() }, year?.takeIf { it.isNotBlank() }?.takeLast(2)).joinToString("/")

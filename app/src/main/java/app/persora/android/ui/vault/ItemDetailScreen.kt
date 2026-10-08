@@ -34,9 +34,9 @@ import app.persora.android.data.model.FieldKind
 import app.persora.android.data.model.Sections
 import app.persora.android.data.model.VaultItem
 import app.persora.android.ui.components.*
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.ui.navigation.LocalNav
 import app.persora.android.ui.navigation.LocalNotify
-import app.persora.android.ui.navigation.Routes
 import app.persora.android.ui.theme.Bento
 import app.persora.android.ui.theme.Accents
 import app.persora.android.ui.theme.Tones
@@ -62,7 +62,6 @@ fun ItemDetailScreen(itemId: String, onClose: (() -> Unit)? = null) {
     val foldersMap by vault.folders.collectAsStateWithLifecycle()
     val shared = incoming.firstOrNull { it.item.id == itemId }
     val item = items.firstOrNull { it.id == itemId } ?: shared?.item
-    val call = app.persora.android.ui.calls.rememberCaller()
     var confirmDelete by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
     var qrPayload by remember { mutableStateOf<String?>(null) }
@@ -93,7 +92,7 @@ fun ItemDetailScreen(itemId: String, onClose: (() -> Unit)? = null) {
             IconButton(onClick = { close() }) { Icon(if (onClose != null) Icons.Outlined.KeyboardArrowDown else Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = Bento.mutedFg) }
             Spacer(Modifier.weight(1f))
             if (!readOnly) IconButton(onClick = { scope.launch { runCatchingSafe { vault.toggleFavorite(item) }.onFailure { notify(it.message ?: "Could not update.", true) } } }) { Icon(if (item.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, "Favorite", tint = if (item.favorite) Accents.amber.c500 else Bento.mutedFg) }
-            if (!readOnly) IconButton(onClick = { val target = Routes.editor(item.section, item.id, share = shared?.shareId); if (onClose != null) onClose(); nav.navigate(target) }) { Icon(Icons.Outlined.Edit, "Edit", tint = Bento.mutedFg) }
+            if (!readOnly) IconButton(onClick = { onClose?.invoke(); EditorDrawer.openItem(item.section, item.id, shareId = shared?.shareId) }) { Icon(Icons.Outlined.Edit, "Edit", tint = Bento.mutedFg) }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More", tint = Bento.mutedFg) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Bento.card) {
@@ -160,18 +159,28 @@ fun ItemDetailScreen(itemId: String, onClose: (() -> Unit)? = null) {
                 Spacer(Modifier.height(14.dp))
             }
 
-            val hidden = setOf("recordType", "completed", "todoDetails", "dueDate", "reminderAt", "alarmTime", "alarmDate", "repeatDays", "ringtoneId", "ringtoneName", "enabled", "snoozedUntil", "relatedItemIds", "relatedContactIds", "color")
+            val hidden = setOf("recordType", "addFlowType", "completed", "todoDetails", "dueDate", "reminderAt", "alarmTime", "alarmDate", "repeatDays", "ringtoneId", "ringtoneName", "enabled", "snoozedUntil", "relatedItemIds", "relatedContactIds", "color")
             val fieldsByKey = section.fields.associateBy { it.key }
             val details = item.metadata.filter { (k, v) -> v.isNotBlank() && k !in hidden && k != "notes" && !(item.section == "notes" && k == "content") }
-            if (details.isNotEmpty()) BentoCard {
+            val savedAddFlowType = item.metadata["addFlowType"]?.takeIf { it.isNotBlank() }
+            if (details.isNotEmpty() || savedAddFlowType != null) BentoCard {
+                savedAddFlowType?.let { DetailRow("Type", it) }
                 details.forEach { (key, value) ->
                     val def = fieldsByKey[key]
                     val label = def?.label ?: key.replace(Regex("([A-Z])"), " $1").replaceFirstChar { it.uppercase() }
-                    when (def?.kind) {
-                        FieldKind.DATE -> DetailRow(label, Dates.formatDate(value))
-                        FieldKind.URL -> LinkRow(label, value) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(if (value.startsWith("http")) value else "https://$value"))) }
-                        FieldKind.EMAIL -> LinkRow(label, value) { context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$value"))) }
-                        else -> if (key == "phone") LinkRow(label, value) { call(value, item.title) } else DetailRow(label, value)
+                    when {
+                        key == "member" -> {
+                            val familyName = when {
+                                value.equals("me", ignoreCase = true) -> "Me"
+                                else -> items.firstOrNull { it.section == "family" && it.id == value }?.title
+                                    ?: if (value.length >= 30 && value.contains('-')) "Family member" else value
+                            }
+                            DetailRow("Belongs to", familyName)
+                        }
+                        def?.kind == FieldKind.DATE -> DetailRow(label, Dates.formatDate(value))
+                        def?.kind == FieldKind.URL -> LinkRow(label, value) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(if (value.startsWith("http")) value else "https://$value"))) }
+                        def?.kind == FieldKind.EMAIL -> LinkRow(label, value) { context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$value"))) }
+                        else -> DetailRow(label, value)
                     }
                 }
             }

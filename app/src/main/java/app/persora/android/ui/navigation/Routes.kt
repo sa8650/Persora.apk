@@ -41,7 +41,7 @@ object Routes {
     const val BILLING = "billing"
     const val SETTINGS = "settings"
     const val MORE = "more"
-    const val CALLS = "calls?dial={dial}"
+    const val CALLS = "calls"
     const val SEARCH = "search"
     const val NOTIFICATIONS = "notifications"
     const val PUBLIC_CARD = "publicCard/{cardId}"
@@ -60,13 +60,13 @@ object Routes {
     val primary = listOf(
         Primary(HOME, "Home", Icons.Outlined.Home, Icons.Filled.Home),
         Primary(SPACES, "Spaces", Icons.Outlined.GridView, Icons.Filled.GridView),
-        Primary(CONTACTS, "Contacts", Icons.Outlined.Person, Icons.Filled.Person),
         Primary(section("notes"), "Tasks", Icons.Outlined.CheckCircle, Icons.Filled.CheckCircle),
         Primary(MORE, "More", Icons.Outlined.MoreHoriz, Icons.Filled.MoreHoriz),
     )
 
     /** Everything else that lives under "More" (and in the expanded-width sidebar). */
     val secondary = listOf(
+        Primary(CONTACTS, "Contacts", Icons.Outlined.ContactPage),
         Primary(calls(), "Calls", Icons.Outlined.Call),
         Primary(MEDICAL, "Medical records", Icons.Outlined.MonitorHeart),
         Primary(TIMELINE, "Life timeline", Icons.Outlined.EventNote),
@@ -77,7 +77,7 @@ object Routes {
     )
 
     /** Title + eyebrow for the top bar (breadcrumb-overline / breadcrumb-title on the web). */
-    fun calls(dial: String? = null) = "calls?dial=${android.net.Uri.encode(dial.orEmpty())}"
+    fun calls() = CALLS
 
     fun titleFor(route: String?, sectionId: String?): Pair<String, String> = when {
         route == null || route == HOME -> "Your personal space" to "Home"

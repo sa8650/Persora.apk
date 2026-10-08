@@ -53,16 +53,16 @@ fun TextInput(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SelectInput(value: String, options: List<String>, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, required: Boolean = false, allowEmpty: Boolean = true) {
+fun SelectInput(value: String, options: List<String>, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, required: Boolean = false, allowEmpty: Boolean = true, optionLabels: Map<String, String> = emptyMap()) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
-            value = value, onValueChange = {}, readOnly = true, label = { Text(if (required) "$label *" else label) }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+            value = optionLabels[value] ?: value, onValueChange = {}, readOnly = true, label = { Text(if (required) "$label *" else label) }, modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
             trailingIcon = { Icon(Icons.Outlined.ExpandMore, null, tint = Bento.mutedFg) }, shape = RoundedCornerShape(12.dp), colors = persoraFieldColors(), singleLine = true,
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = Bento.card) {
             if (allowEmpty && !required) DropdownMenuItem(text = { Text("—", color = Bento.subtleFg) }, onClick = { onChange(""); expanded = false })
-            options.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { onChange(option); expanded = false }) }
+            options.forEach { option -> DropdownMenuItem(text = { Text(optionLabels[option] ?: option) }, onClick = { onChange(option); expanded = false }) }
         }
     }
 }

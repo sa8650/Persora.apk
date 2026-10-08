@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import kotlin.math.abs
 
 /** A single call — either from the system call log (every phone app) or Persora's own record of calls it placed/handled. */
 @Serializable
@@ -51,14 +52,54 @@ object CallLogStore {
         save(context, list + CallEntry("out-${System.currentTimeMillis()}", number, name, "outgoing", System.currentTimeMillis(), 0, sim))
     }
 
-    /** Called when a call ends in [CallManager]; updates the matching outgoing entry or records an incoming/missed one. */
-    fun noteEnded(context: Context, number: String, name: String?, incoming: Boolean, answered: Boolean, startedAt: Long, durationSec: Long) {
-        val list = load(context).toMutableList()
-        val direction = if (!incoming) "outgoing" else if (answered) "incoming" else "missed"
-        val recent = list.indexOfLast { !incoming && it.direction == "outgoing" && it.number == number && startedAt - it.startedAt < 120_000 }
-        if (recent >= 0) list[recent] = list[recent].copy(durationSec = durationSec, name = list[recent].name ?: name)
-        else list += CallEntry("call-$startedAt", number, name, direction, startedAt, durationSec)
-        save(context, list)
+    fun noteEnded(
+        context: Context,
+        number: String,
+        name: String?,
+        incoming: Boolean,
+        answered: Boolean,
+        startedAt: Long,
+        durationSec: Long
+    ) {
+        val list = load(context)
+        val direction = if (incoming) {
+            if (answered) "incoming" else "missed"
+        } else {
+            "outgoing"
+        }
+
+        val existingIndex = if (!incoming) {
+            list.indexOfFirst {
+                it.direction == "outgoing" &&
+                        it.number.takeLast(7) == number.takeLast(7) &&
+                        abs(it.startedAt - startedAt) < 120_000
+            }
+        } else -1
+
+        val newList = if (existingIndex != -1) {
+            list.mapIndexed { index, entry ->
+                if (index == existingIndex) {
+                    entry.copy(
+                        name = entry.name ?: name,
+                        durationSec = durationSec
+                    )
+                } else {
+                    entry
+                }
+            }
+        } else {
+            val entry = CallEntry(
+                id = "${if (incoming) "in" else "out"}-${System.currentTimeMillis()}",
+                number = number,
+                name = name,
+                direction = direction,
+                startedAt = startedAt,
+                durationSec = durationSec
+            )
+            list + entry
+        }
+
+        save(context, newList)
     }
 
     fun clear(context: Context) = save(context, emptyList())

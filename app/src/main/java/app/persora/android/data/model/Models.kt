@@ -13,6 +13,8 @@ data class AppUser(
     val role: String = "user",        // "user" | "admin"
     val timezone: String = "Asia/Dhaka",
     val avatarUrl: String = "",
+    val emailVerified: Boolean = false,
+    val uploadsEnabled: Boolean = false,
 ) {
     val initials: String get() = fullName.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifBlank { "P" }
 }
@@ -134,6 +136,7 @@ data class MedicalRecord(
     val hospital: String = "",
     val specialty: String = "",
     val notes: String = "",
+    val additionalData: String = "",
     val diagnosis: String = "",
     val testName: String = "",
     val testResult: String = "",
@@ -248,6 +251,7 @@ data class BillingSnapshot(
     val billingSettings: BillingSettings = BillingSettings(),
     val paymentMethods: List<PaymentMethod> = emptyList(),
     val maxUploadMb: Int = 25,
+    val uploadsEnabled: Boolean = false,
 )
 
 /* ---------- Smart scan ---------- */

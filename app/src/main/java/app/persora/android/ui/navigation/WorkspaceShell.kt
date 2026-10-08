@@ -1,6 +1,11 @@
 package app.persora.android.ui.navigation
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,8 +21,10 @@ import app.persora.android.ui.vault.ItemDetailScreen
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -25,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -100,23 +108,29 @@ fun WorkspaceShell(user: AppUser, offline: Boolean, deepLink: DeepLink?, onDeepL
     val windowClass = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    suspend fun refreshSessionProfile() {
+        try { container.api.me()?.let(container.session::updateUser) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { /* keep the cached entitlement when offline */ }
+    }
+
     val notify: (String, Boolean) -> Unit = { message, isError ->
         if (!message.contains("left the composition", ignoreCase = true)) toast.show(message, toastKindFor(message, isError))
     }
 
     // Load cache instantly, then reconcile with the API; poll every 30 s while in the foreground (same cadence as the web).
-    LaunchedEffect(user.id) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { vault.loadFromCache() }; vault.refreshAll(); val interest = container.session.primaryInterest(); if (interest != null && vault.items.value.isEmpty()) { /* first run: open the chosen space */ nav.navigate(if (interest == "contacts") Routes.CONTACTS else if (interest == "medical-records") Routes.MEDICAL else Routes.section(interest)) } }
+    LaunchedEffect(user.id) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { vault.loadFromCache() }; refreshSessionProfile(); vault.refreshAll(); val interest = container.session.primaryInterest(); if (interest != null && vault.items.value.isEmpty()) { /* first run: open the chosen space */ nav.navigate(if (interest == "contacts") Routes.CONTACTS else if (interest == "medical-records") Routes.MEDICAL else Routes.section(interest)) } }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> vault.launch { vault.refreshAll() }
+                Lifecycle.Event.ON_RESUME -> vault.launch { refreshSessionProfile(); vault.refreshAll() }
                 Lifecycle.Event.ON_STOP -> if (container.session.appLockEnabled) container.session.lock()
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer); onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(Unit) { var tick = 0; while (true) { delay(30_000); tick++; vault.launch { if (tick % 4 == 0) vault.refreshAll() else vault.refreshLight() } } }
+    LaunchedEffect(Unit) { var tick = 0; while (true) { delay(30_000); tick++; vault.launch { if (tick % 4 == 0) { refreshSessionProfile(); vault.refreshAll() } else vault.refreshLight() } } }
     LaunchedEffect(lastError) { lastError?.let { toast.error(it); vault.clearError() } }
     LaunchedEffect(deepLink) {
         deepLink ?: return@LaunchedEffect
@@ -125,7 +139,7 @@ fun WorkspaceShell(user: AppUser, offline: Boolean, deepLink: DeepLink?, onDeepL
             deepLink.itemId != null -> Details.openItem(deepLink.itemId)
             deepLink.view == "notes" -> nav.navigate(Routes.section("notes"))
             deepLink.view == "shared" -> nav.navigate(Routes.SHARED)
-            deepLink.view == "calls" -> nav.navigate(Routes.calls(deepLink.dialNumber))
+            deepLink.view == "calls" -> nav.navigate(Routes.calls())
         }
         onDeepLinkConsumed()
     }
@@ -185,7 +199,9 @@ fun WorkspaceShell(user: AppUser, offline: Boolean, deepLink: DeepLink?, onDeepL
                 }
                 windowClass == WindowWidthSizeClass.MEDIUM && !hideChrome -> Row(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxHeight().width(76.dp).background(Bento.card).padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Routes.primary.forEach { item -> BentoTab(item.label, if (isSelected(route, sectionArg, item.route)) item.selectedIcon else item.icon, isSelected(route, sectionArg, item.route), Modifier.width(64.dp)) { navigateTop(item.route) } }
+                        Routes.primary.take(2).forEach { item -> BentoTab(item.label, if (isSelected(route, sectionArg, item.route)) item.selectedIcon else item.icon, isSelected(route, sectionArg, item.route), Modifier.width(64.dp)) { navigateTop(item.route) } }
+                        BentoAddTab(Modifier.width(64.dp).height(64.dp)) { EditorDrawer.openAddDocument() }
+                        Routes.primary.drop(2).forEach { item -> BentoTab(item.label, if (isSelected(route, sectionArg, item.route)) item.selectedIcon else item.icon, isSelected(route, sectionArg, item.route), Modifier.width(64.dp)) { navigateTop(item.route) } }
                     }
                     Box(Modifier.fillMaxHeight().width(1.dp).background(Bento.border))
                     Scaffold(topBar = topBar, containerColor = Color.Transparent, content = content)
@@ -199,6 +215,17 @@ fun WorkspaceShell(user: AppUser, offline: Boolean, deepLink: DeepLink?, onDeepL
             // App-wide record drawers (item / contact) slide up over everything, including the tab bar.
             Details.itemId?.let { id -> DetailSheet(onDismiss = { Details.close() }) { ItemDetailScreen(id, onClose = { Details.close() }) } }
             Details.contactId?.let { id -> DetailSheet(onDismiss = { Details.close() }) { ContactDetailScreen(id, onClose = { Details.close() }) } }
+            EditorDrawer.target?.let { target ->
+                DetailSheet(onDismiss = { EditorDrawer.close() }) {
+                    when (target) {
+                        is EditorTarget.Item -> ItemEditorScreen(target.sectionId, target.itemId, target.folderId, target.kind, target.shareId, initialMetadata = target.initialMetadata, initialFile = target.initialFile, initialScanResult = target.initialScanResult, initialScanComplete = target.initialScanComplete, onClose = { EditorDrawer.close() })
+                        is EditorTarget.Contact -> ContactEditorScreen(target.id, initialCategory = target.initialCategory, onClose = { EditorDrawer.close() })
+                        is EditorTarget.Medical -> MedicalEditorScreen(target.id, initialType = target.initialType, initialFile = target.initialFile, initialTitle = target.initialTitle, initialAdditionalData = target.initialAdditionalData, initialScanResult = target.initialScanResult, initialScanComplete = target.initialScanComplete, onClose = { EditorDrawer.close() })
+                        is EditorTarget.BusinessCard -> BusinessCardEditorScreen(target.id, onClose = { EditorDrawer.close() })
+                        is EditorTarget.AddDocument -> AddDocumentScreen(onClose = { EditorDrawer.close() }, initialDraft = target.draft)
+                    }
+                }
+            }
             ToastHost(toast, bottomPadding = if (windowClass == WindowWidthSizeClass.COMPACT && !hideChrome) 92.dp else 24.dp)
         }
     }
@@ -210,11 +237,47 @@ private fun BentoBottomBar(route: String?, sectionArg: String?, onNavigate: (Str
     Column(Modifier.fillMaxWidth().background(Bento.card)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Bento.border))
         Row(Modifier.fillMaxWidth().navigationBarsPadding().height(60.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Routes.primary.forEach { item ->
+            Routes.primary.take(2).forEach { item ->
+                val selected = isSelected(route, sectionArg, item.route)
+                BentoTab(item.label, if (selected) item.selectedIcon else item.icon, selected, Modifier.weight(1f).fillMaxHeight()) { onNavigate(item.route) }
+            }
+            BentoAddTab(Modifier.weight(1f).fillMaxHeight()) { EditorDrawer.openAddDocument() }
+            Routes.primary.drop(2).forEach { item ->
                 val selected = isSelected(route, sectionArg, item.route)
                 BentoTab(item.label, if (selected) item.selectedIcon else item.icon, selected, Modifier.weight(1f).fillMaxHeight()) { onNavigate(item.route) }
             }
         }
+    }
+}
+
+@Composable
+private fun BentoAddTab(modifier: Modifier, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val tileShape = RoundedCornerShape(14.dp)
+    val pulse = rememberInfiniteTransition(label = "add-document-glow")
+    val glow by pulse.animateFloat(initialValue = 0.20f, targetValue = 0.52f, animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse), label = "glow")
+    val gradient = Brush.linearGradient(listOf(Color(0xFF386BFF), Color(0xFF7656F6), Color(0xFF21B7C9)))
+    Column(
+        modifier.clip(RoundedCornerShape(12.dp)).clickable(indication = null, interactionSource = interaction, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(vertical = 3.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier.size(42.dp)
+                .shadow(9.dp, tileShape, ambientColor = Color(0xFF6758F5).copy(alpha = glow), spotColor = Color(0xFF20C8D7).copy(alpha = glow))
+                .clip(tileShape).background(gradient)
+                .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.90f), Color.White.copy(alpha = 0.30f))), tileShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.22f), Color.Transparent))))
+            Icon(Icons.Outlined.NoteAdd, "Add document", tint = Color.White, modifier = Modifier.size(21.dp))
+            Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(16.dp).clip(CircleShape).background(Bento.card).border(1.dp, Color(0xFF76E7FF), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Add, null, tint = Color(0xFF635CF3), modifier = Modifier.size(11.dp))
+            }
+            Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(5.dp).clip(CircleShape).background(Color(0xFF9CFFF3)))
+        }
+        Spacer(Modifier.height(3.dp))
+        Text("ADD", style = MonoCaption.copy(fontSize = 7.5.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold), color = Bento.primary, maxLines = 1)
     }
 }
 
@@ -263,7 +326,7 @@ private fun WorkspaceNavHost(nav: NavHostController, user: AppUser) {
         composable(Routes.BILLING) { BillingScreen() }
         composable(Routes.SETTINGS) { SettingsScreen(user) }
         composable(Routes.MORE) { MoreScreen() }
-        composable(Routes.CALLS, arguments = listOf(navArgument("dial") { defaultValue = "" })) { entry -> CallLogScreen(initialDial = entry.arguments?.getString("dial")?.takeIf { it.isNotBlank() }) }
+        composable(Routes.CALLS) { CallLogScreen() }
         composable(Routes.SEARCH) { SearchScreen() }
         composable(Routes.NOTIFICATIONS) { NotificationsScreen() }
         composable(Routes.PUBLIC_CARD, arguments = listOf(navArgument("cardId") { type = NavType.StringType })) { PublicCardScreen(it.arguments!!.getString("cardId")!!) }

@@ -40,6 +40,7 @@ import app.persora.android.core.util.PickedFile
 import app.persora.android.core.util.Qr
 import app.persora.android.data.model.*
 import app.persora.android.ui.components.*
+import app.persora.android.ui.navigation.EditorDrawer
 import app.persora.android.ui.navigation.LocalNav
 import app.persora.android.ui.navigation.LocalNotify
 import app.persora.android.ui.navigation.Routes
@@ -119,14 +120,14 @@ fun BusinessCardsScreen() {
     var confirmDelete by remember { mutableStateOf<DigitalBusinessCard?>(null) }
     LaunchedEffect(Unit) { vault.refreshCards() }
 
-    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, floatingActionButton = { ExtendedFloatingActionButton(onClick = { nav.navigate(Routes.cardEditor()) }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") }) }) { padding ->
+    Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, floatingActionButton = { ExtendedFloatingActionButton(onClick = { EditorDrawer.openBusinessCard() }, containerColor = Bento.primary, contentColor = Bento.primaryFg, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Add") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(14.dp, 14.dp, 14.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (cards.isEmpty()) item { EmptyState("No business cards yet.", "Create your first card in under a minute. You choose what's public.", Icons.Outlined.CreditCard) }
             items(cards, key = { it.id }) { card ->
                 Column {
-                    BusinessCardVisual(card, card.profilePhotoKey?.let { api.vaultFileUrl(it) }, card.businessLogoKey?.let { api.vaultFileUrl(it) }, Modifier.fillMaxWidth().clickable { nav.navigate(Routes.cardEditor(card.id)) })
+                    BusinessCardVisual(card, card.profilePhotoKey?.let { api.vaultFileUrl(it) }, card.businessLogoKey?.let { api.vaultFileUrl(it) }, Modifier.fillMaxWidth().clickable { EditorDrawer.openBusinessCard(card.id) })
                     Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SoftButton("Edit", onClick = { nav.navigate(Routes.cardEditor(card.id)) }, icon = Icons.Outlined.Edit)
+                        SoftButton("Edit", onClick = { EditorDrawer.openBusinessCard(card.id) }, icon = Icons.Outlined.Edit)
                         if (card.isPublic && card.cardId != null) {
                             QuietButton("QR", onClick = { qr = card }, icon = Icons.Outlined.QrCode2)
                             QuietButton("Copy link", onClick = { val url = api.publicCardUrl(card.cardId); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url) }, "Share card link")) }, icon = Icons.Outlined.Link)
@@ -148,16 +149,18 @@ fun BusinessCardsScreen() {
 /* ---------------- Editor ---------------- */
 
 @Composable
-fun BusinessCardEditorScreen(id: String?) {
+fun BusinessCardEditorScreen(id: String?, onClose: (() -> Unit)? = null) {
     val context = LocalContext.current
     val container = context.appContainer
     val vault = container.vault
     val api = container.api
     val nav = LocalNav.current
+    val closeEditor: () -> Unit = onClose ?: { nav.popBackStack() }
     val notify = LocalNotify.current
     val scope = rememberCoroutineScope()
     val cards by vault.businessCards.collectAsStateWithLifecycle()
-    val user = container.session.currentUser
+    val user = observeCurrentUser()
+    val canUpload = user?.uploadsEnabled == true
     val existing = cards.firstOrNull { it.id == id }
     var form by remember(existing) { mutableStateOf(existing ?: DigitalBusinessCard(id = UUID.randomUUID().toString(), fullName = user?.fullName.orEmpty(), email = user?.email.orEmpty(), phoneNumbers = listOf(ContactPhone("Mobile", "")), websites = listOf(""))) }
     var photo by remember { mutableStateOf<PickedFile?>(null) }
@@ -165,10 +168,17 @@ fun BusinessCardEditorScreen(id: String?) {
     var clearPhoto by remember { mutableStateOf(false) }
     var clearLogo by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { photo = Files.describe(context, it); clearPhoto = false } }
-    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { logo = Files.describe(context, it); clearLogo = false } }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null && canUpload) { photo = Files.describe(context, uri); clearPhoto = false }
+        else if (uri != null) notify("New business-card image uploads require an active paid plan. Existing images remain accessible.", true)
+    }
+    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null && canUpload) { logo = Files.describe(context, uri); clearLogo = false }
+        else if (uri != null) notify("New business-card image uploads require an active paid plan. Existing images remain accessible.", true)
+    }
 
     fun save() {
+        if ((photo != null || logo != null) && !canUpload) { notify("New business-card image uploads require an active paid plan. Existing images remain accessible.", true); return }
         if (form.fullName.isBlank()) { notify("Add your name.", true); return }
         saving = true
         scope.launch {
@@ -179,14 +189,14 @@ fun BusinessCardEditorScreen(id: String?) {
                 logo?.let { p -> if (p.size > 5L * 1024 * 1024) error("Logos must be 5 MB or smaller."); logoKey = withContext(Dispatchers.IO) { api.uploadVaultFile(p.name, p.mime, p.size, { p.open(context) }) }.key }
                 val clean = form.copy(fullName = form.fullName.trim(), phoneNumbers = form.phoneNumbers.filter { it.number.isNotBlank() }, websites = form.websites.map { it.trim() }.filter { it.isNotBlank() }, socialLinks = form.socialLinks.filter { it.url.isNotBlank() }, customLinks = form.customLinks.filter { it.url.isNotBlank() && it.label.isNotBlank() }, profilePhotoKey = profileKey, businessLogoKey = logoKey)
                 vault.saveBusinessCard(clean, existing == null)
-                notify(if (existing == null) "Card created." else "Card updated.", false); nav.popBackStack()
+                notify(if (existing == null) "Card created." else "Card updated.", false); closeEditor()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { notify(e.message ?: "Could not save card.", true) } finally { saving = false }
         }
     }
 
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent, topBar = {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Outlined.Close, "Cancel", tint = Bento.mutedFg) }
+            IconButton(onClick = closeEditor) { Icon(Icons.Outlined.Close, "Cancel", tint = Bento.mutedFg) }
             Column(Modifier.weight(1f)) { Eyebrow("Your digital identity"); Text(if (existing == null) "New business card" else "Edit card", style = MaterialTheme.typography.titleMedium, color = Bento.fg) }
             PrimaryButton("Save", ::save, enabled = !saving, loading = saving)
         }
@@ -203,9 +213,9 @@ fun BusinessCardEditorScreen(id: String?) {
             }
             BentoCard {
                 SectionHeading("Images", "Photo & logo")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SoftButton(if (photo != null) "Change photo" else "Profile photo", onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.AddAPhoto); if (photo != null || (existing?.profilePhotoKey != null && !clearPhoto)) TextButton(onClick = { photo = null; clearPhoto = true }) { Text("Remove", color = Bento.danger) } }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SoftButton(if (logo != null) "Change logo" else "Business logo", onClick = { logoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.Image); if (logo != null || (existing?.businessLogoKey != null && !clearLogo)) TextButton(onClick = { logo = null; clearLogo = true }) { Text("Remove", color = Bento.danger) } }
-                Text("JPG, PNG, WEBP or GIF · max 5 MB", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SoftButton(if (photo != null) "Change photo" else "Profile photo", onClick = { if (canUpload) photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.AddAPhoto, enabled = canUpload); if (photo != null || (existing?.profilePhotoKey != null && !clearPhoto)) TextButton(onClick = { photo = null; clearPhoto = true }) { Text("Remove", color = Bento.danger) } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { SoftButton(if (logo != null) "Change logo" else "Business logo", onClick = { if (canUpload) logoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.Image, enabled = canUpload); if (logo != null || (existing?.businessLogoKey != null && !clearLogo)) TextButton(onClick = { logo = null; clearLogo = true }) { Text("Remove", color = Bento.danger) } }
+                Text(if (canUpload) "JPG, PNG, WEBP or GIF · max 5 MB" else "New photo and logo uploads require an active paid plan. Existing images remain accessible.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
             }
             BentoCard {
                 TextInput(form.fullName, { form = form.copy(fullName = it) }, "Full name", required = true)

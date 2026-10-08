@@ -1,12 +1,9 @@
 package app.persora.android.calls
 
 import android.Manifest
-import android.app.role.RoleManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
@@ -16,10 +13,7 @@ import app.persora.android.data.model.PersoraContact
 /** One SIM / calling account the phone can place calls from (what the system "Choose SIM" sheet lists). */
 data class SimOption(val handle: PhoneAccountHandle, val label: String, val description: String, val color: Int)
 
-/**
- * Telecom helpers for Persora's own dialer: SIM selection, placing calls through TelecomManager (no external dialer UI)
- * and the default-phone-app role that lets [PersoraInCallService] show the in-call screen.
- */
+/** In-app call-log and dialpad helpers. Call actions hand off to Android's system call UI; Persora has no in-call screen or default-dialer role. */
 object Calls {
     val CALL_PERMISSIONS = arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)
 
@@ -42,7 +36,7 @@ object Calls {
 
     fun normalize(number: String): String = number.filter { it.isDigit() || it == '+' || it == '#' || it == '*' }
 
-    /** Places the call directly through Telecom. If Persora is the default phone app the in-call UI is ours, otherwise the system's. */
+    /** Hands the call to Telecom; the Android system's configured phone app supplies the in-call UI. */
     fun place(context: Context, number: String, sim: PhoneAccountHandle?, displayName: String? = null) {
         val clean = normalize(number)
         require(clean.isNotBlank()) { "That contact has no phone number." }
@@ -50,19 +44,6 @@ object Calls {
         CallLogStore.noteOutgoing(context, clean, displayName, sim?.let { h -> simOptions(context).firstOrNull { it.handle == h }?.label })
         telecom(context).placeCall(Uri.fromParts("tel", clean, null), extras)
     }
-
-    fun isDefaultDialer(context: Context): Boolean = try {
-        if (Build.VERSION.SDK_INT >= 29) (context.getSystemService(Context.ROLE_SERVICE) as RoleManager).isRoleHeld(RoleManager.ROLE_DIALER)
-        else telecom(context).defaultDialerPackage == context.packageName
-    } catch (_: Exception) { false }
-
-    fun supportsDialerRole(context: Context): Boolean =
-        context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) && (Build.VERSION.SDK_INT < 29 || runCatching { (context.getSystemService(Context.ROLE_SERVICE) as RoleManager).isRoleAvailable(RoleManager.ROLE_DIALER) }.getOrDefault(false))
-
-    /** Intent that asks the user to make Persora the phone app (needed for Persora's own in-call screen). */
-    fun requestDefaultDialerIntent(context: Context): Intent =
-        if (Build.VERSION.SDK_INT >= 29) (context.getSystemService(Context.ROLE_SERVICE) as RoleManager).createRequestRoleIntent(RoleManager.ROLE_DIALER)
-        else Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
 
     /** Match a dialled/incoming number to a Persora contact (last 7+ digits, like the system contacts matcher). */
     fun matchContact(number: String?, contacts: List<PersoraContact>): PersoraContact? {

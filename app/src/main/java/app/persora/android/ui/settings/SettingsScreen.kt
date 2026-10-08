@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.persora.android.BuildConfig
 import app.persora.android.appContainer
@@ -57,7 +58,8 @@ private val TIMEZONES = listOf("Asia/Dhaka", "Asia/Kolkata", "Asia/Dubai", "Asia
 
 /** Preferences / profile on the web → Settings here, plus Android-only items (app lock, notifications, exact alarms). */
 @Composable
-fun SettingsScreen(user: AppUser) {
+fun SettingsScreen(initialUser: AppUser) {
+    val user = observeCurrentUser() ?: initialUser
     val context = LocalContext.current
     val container = context.appContainer
     val api = container.api
@@ -74,6 +76,11 @@ fun SettingsScreen(user: AppUser) {
     var editingProfile by rememberSaveable { mutableStateOf(false) }
     val lastSyncedAt by vault.lastSyncedAt.collectAsStateWithLifecycle()
     var savingProfile by remember { mutableStateOf(false) }
+    var verificationCode by rememberSaveable { mutableStateOf("") }
+    var verificationCodeSent by rememberSaveable { mutableStateOf(false) }
+    var sendingVerification by remember { mutableStateOf(false) }
+    var verifyingEmail by remember { mutableStateOf(false) }
+    val canUpload = user.uploadsEnabled
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         avatarBusy = true
@@ -85,6 +92,32 @@ fun SettingsScreen(user: AppUser) {
         }
     }
     val profileDirty = fullName != user.fullName || timezone != user.timezone || avatarUrl != user.avatarUrl
+    fun sendVerificationCode() {
+        if (sendingVerification) return
+        sendingVerification = true
+        scope.launch {
+            runCatchingSafe {
+                val alreadyVerified = api.sendEmailVerificationCode()
+                if (alreadyVerified) api.me()?.let(session::updateUser)
+                alreadyVerified
+            }.onSuccess { alreadyVerified ->
+                if (alreadyVerified) { verificationCodeSent = false; notify("This email address is already verified.", false) }
+                else { verificationCodeSent = true; notify("A one-time code was sent to your registered email.", false) }
+            }.onFailure { notify(it.message ?: "Couldn't send a verification code.", true) }
+            sendingVerification = false
+        }
+    }
+    fun verifyEmailCode() {
+        if (!verificationCode.matches(Regex("\\d{6}"))) { notify("Enter the six-digit code from your email.", true); return }
+        if (verifyingEmail) return
+        verifyingEmail = true
+        scope.launch {
+            runCatchingSafe { api.verifyEmailVerificationCode(verificationCode) }
+                .onSuccess { verified -> session.updateUser(verified); verificationCode = ""; verificationCodeSent = false; notify("Your email is verified.", false) }
+                .onFailure { notify(it.message ?: "That code couldn't be verified.", true) }
+            verifyingEmail = false
+        }
+    }
     var appLock by remember { mutableStateOf(session.appLockEnabled) }
     var passwordOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
@@ -100,7 +133,10 @@ fun SettingsScreen(user: AppUser) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 UserAvatar(user, 56.dp, avatarUrl = avatarUrl, fullName = fullName); Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(fullName.ifBlank { user.fullName }, style = MaterialTheme.typography.titleMedium, color = Bento.fg)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(fullName.ifBlank { user.fullName }, style = MaterialTheme.typography.titleMedium, color = Bento.fg, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (user.emailVerified) VerifiedBadge(activePlan = canUpload, size = 17.dp)
+                    }
                     Text(user.email, style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
                     Row(Modifier.clickable { clipboard.setText(AnnotatedString(user.userId)); notify("Persora ID copied.", false) }, verticalAlignment = Alignment.CenterVertically) { Text("Persora ID ${user.userId}", style = MaterialTheme.typography.labelLarge, color = Bento.primary); Spacer(Modifier.width(4.dp)); Icon(Icons.Outlined.ContentCopy, null, tint = Bento.primary, modifier = Modifier.size(13.dp)) }
                 }
@@ -110,14 +146,64 @@ fun SettingsScreen(user: AppUser) {
             Text("Members can share with you using this ID or your email.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg, modifier = Modifier.padding(top = 8.dp))
         }
 
+        BentoCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ToneIconBox(if (user.emailVerified) Icons.Outlined.MarkEmailRead else Icons.Outlined.Email, if (user.emailVerified) Tones.Green else Tones.Blue, size = 42.dp, radius = 13.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Email verification", style = MaterialTheme.typography.titleMedium, color = Bento.fg)
+                    Text("Your account address", style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
+                }
+                Pill(if (user.emailVerified) "Verified" else "Not verified", if (user.emailVerified) Tones.Green else Tones.Amber, if (user.emailVerified) Icons.Outlined.CheckCircle else Icons.Outlined.Info)
+            }
+            Spacer(Modifier.height(12.dp))
+            if (user.emailVerified) {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Tones.Green.bg).border(1.dp, Tones.Green.line, RoundedCornerShape(14.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    VerifiedBadge(activePlan = canUpload, size = 25.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(user.email, style = MaterialTheme.typography.titleSmall, color = Bento.fg, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(if (canUpload) "Verified · active paid plan" else "Verified · no active paid plan", style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
+                    }
+                }
+                Text("The verified mark appears beside your name. Its color reflects your current plan status.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg, modifier = Modifier.padding(top = 8.dp))
+            } else {
+                Text("Confirm the email registered to your account to show a verified mark beside your name.", style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Bento.card).border(1.dp, Bento.border, RoundedCornerShape(12.dp)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(Bento.primarySoft), contentAlignment = Alignment.Center) { Text("1", style = MaterialTheme.typography.labelMedium, color = Bento.primary, fontWeight = FontWeight.Bold) }
+                    Text("Send a one-time code", style = MaterialTheme.typography.labelMedium, color = Bento.fg, modifier = Modifier.padding(start = 7.dp))
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Outlined.ChevronRight, null, tint = Bento.subtleFg, modifier = Modifier.size(15.dp))
+                    Box(Modifier.padding(horizontal = 8.dp).size(24.dp).clip(CircleShape).background(if (verificationCodeSent) Bento.primarySoft else Bento.muted), contentAlignment = Alignment.Center) { Text("2", style = MaterialTheme.typography.labelMedium, color = if (verificationCodeSent) Bento.primary else Bento.subtleFg, fontWeight = FontWeight.Bold) }
+                    Text("Enter and verify", style = MaterialTheme.typography.labelMedium, color = if (verificationCodeSent) Bento.fg else Bento.subtleFg)
+                }
+                Text("A six-digit code will be sent to", style = MaterialTheme.typography.labelMedium, color = Bento.subtleFg, modifier = Modifier.padding(top = 12.dp))
+                Text(user.email, style = MaterialTheme.typography.titleSmall, color = Bento.fg, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                PrimaryButton(if (sendingVerification) "Sending code…" else if (verificationCodeSent) "Send another code" else "Send verification code", onClick = ::sendVerificationCode, enabled = !sendingVerification, loading = sendingVerification, icon = Icons.Outlined.Email, modifier = Modifier.fillMaxWidth())
+                if (verificationCodeSent) {
+                    Spacer(Modifier.height(12.dp))
+                    TextInput(verificationCode, { verificationCode = it.filter(Char::isDigit).take(6) }, "Six-digit code", keyboard = KeyboardType.Number, placeholder = "000000", supporting = "Codes expire in 10 minutes. Check your inbox and spam folder.")
+                    Spacer(Modifier.height(8.dp))
+                    PrimaryButton(if (verifyingEmail) "Verifying…" else "Verify email", onClick = ::verifyEmailCode, enabled = !verifyingEmail && verificationCode.length == 6, loading = verifyingEmail, icon = Icons.Outlined.CheckCircle, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+        if (!canUpload) BentoCard {
+            SectionHeading("File uploads", "Paid plan required")
+            Text("You can still add, edit and delete records. New file, image and document uploads are paused; previously uploaded files remain accessible.", style = MaterialTheme.typography.bodySmall, color = Bento.mutedFg)
+            Spacer(Modifier.height(8.dp))
+            PrimaryButton("View plans", onClick = { nav.navigate(Routes.BILLING) }, icon = Icons.Outlined.WorkspacePremium)
+        }
+
         if (editingProfile) BentoCard {
             SectionHeading("Profile photo", "Photo, emoji or avatar")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 UserAvatar(user, 72.dp, avatarUrl = avatarUrl, fullName = fullName); Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SoftButton(if (avatarBusy) "Preparing…" else "Upload photo", onClick = { if (!avatarBusy) photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.AddAPhoto)
+                    SoftButton(if (avatarBusy) "Preparing…" else "Upload photo", onClick = { if (!avatarBusy && canUpload) photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, icon = Icons.Outlined.AddAPhoto, enabled = canUpload && !avatarBusy)
                     if (avatarUrl.isNotBlank()) TextButton(onClick = { avatarUrl = "" }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Use initials", color = Bento.mutedFg) }
-                    Text("JPG, PNG or WEBP · up to 8 MB · cropped square", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
+                    Text(if (canUpload) "JPG, PNG or WEBP · up to 8 MB · cropped square" else "New profile-photo uploads need an active paid plan. Emoji and built-in avatars remain available.", style = MaterialTheme.typography.bodySmall, color = Bento.subtleFg)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -148,6 +234,7 @@ fun SettingsScreen(user: AppUser) {
             Spacer(Modifier.height(10.dp))
             PrimaryButton(if (savingProfile) "Saving…" else "Save profile", onClick = {
                 if (fullName.isBlank()) { notify("Your name can't be empty.", true); return@PrimaryButton }
+                if (avatarUrl.startsWith("data:image/") && avatarUrl != user.avatarUrl && !canUpload) { notify("New profile-photo uploads require an active paid plan. Emoji and built-in avatars remain available.", true); return@PrimaryButton }
                 savingProfile = true
                 scope.launch {
                     runCatchingSafe { api.updateProfile(fullName.trim(), timezone, avatarUrl); api.me() }
